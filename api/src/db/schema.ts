@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, serial, integer, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { user } from './auth.schema.js';
 
@@ -43,5 +43,17 @@ export const noteHistory = pgTable('note_history', {
     text: text('text').notNull(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
+export const noteOrder = pgTable('note_order', {
+    userId: text('user_id')
+        .notNull()
+        .references(() => user.id, { onDelete: 'cascade' }),
+    noteId: text('note_id')
+        .notNull()
+        .references(() => note.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+}, (t) => [
+    uniqueIndex('note_order_user_id_note_id_idx').on(t.userId, t.noteId),
+]);
 
 export * from './auth.schema.js';

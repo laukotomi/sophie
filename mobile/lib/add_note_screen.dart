@@ -93,6 +93,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
 
   bool _saving = false;
   bool _deleting = false;
+  int? _fixedPosition;
   String? _errorMessage;
 
   bool get _isEditing => widget.existingNote != null;
@@ -125,6 +126,45 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
   void dispose() {
     _textController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openSettings() async {
+    final controller = TextEditingController(
+      text: _fixedPosition?.toString() ?? '',
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Note settings'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Fixed position',
+            hintText: 'Leave empty for automatic',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final raw = controller.text.trim();
+              setState(() {
+                _fixedPosition = raw.isEmpty ? null : int.tryParse(raw);
+              });
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
   }
 
   Future<void> _openAddCollaborator() async {
@@ -178,11 +218,13 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
           widget.existingNote!.id,
           _textController.text.trim(),
           collaborators: collabs,
+          fixedPosition: _fixedPosition,
         );
       } else {
         await widget.client.createNote(
           _textController.text.trim(),
           collaborators: collabs,
+          fixedPosition: _fixedPosition,
         );
       }
       if (mounted) Navigator.of(context).pop(true);
@@ -278,6 +320,11 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
                         }
                       },
               ),
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: 'Note settings',
+              onPressed: _openSettings,
+            ),
             PopupMenuButton<String>(
               icon: const Icon(Icons.add),
               onSelected: (value) {

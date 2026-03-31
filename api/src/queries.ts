@@ -1,7 +1,7 @@
 import { db } from './db/index.js';
 import { user } from './db/auth.schema.js';
-import { note, collaborator, alert as alertTable, noteHistory } from './db/schema.js';
-import { eq, inArray, and, desc, notInArray } from 'drizzle-orm';
+import { note, collaborator, alert as alertTable, noteHistory, noteOrder } from './db/schema.js';
+import { eq, inArray, and, desc, notInArray, gte, sql } from 'drizzle-orm';
 
 type Tx = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
 
@@ -41,7 +41,7 @@ export async function getDashboardData(userId: string) {
         ...collaboratedNotes.map((n) => n.id),
     ];
 
-    const [alerts, collaborators] = noteIds.length > 0
+    const [alerts, collaborators, positions] = noteIds.length > 0
         ? await Promise.all([
             db
                 .select({ id: alertTable.id, noteId: alertTable.noteId, time: alertTable.time })
@@ -59,9 +59,15 @@ export async function getDashboardData(userId: string) {
                 .from(collaborator)
                 .innerJoin(user, eq(user.id, collaborator.userId))
                 .where(inArray(collaborator.noteId, noteIds)),
-        ])
-        : [[], []];
 
+            db
+                .select({ noteId: noteOrder.noteId, position: noteOrder.position })
+                .from(noteOrder)
+                .where(and(eq(noteOrder.userId, userId), inArray(noteOrder.noteId, noteIds))),
+        ])
+        : [[], [], []];
+
+    const positionByNoteId = new Map(positions.map((p) => [p.noteId, p.position]));
     const alertsByNoteId = Map.groupBy(alerts, (a) => a.noteId);
     const collaboratorsByNoteId = Map.groupBy(collaborators, (c) => c.noteId);
 
@@ -69,7 +75,14 @@ export async function getDashboardData(userId: string) {
         ...ownedNotes.map((n) => ({ ...n, right: 'edit' as const, isOwner: true })),
         ...collaboratedNotes.map((n) => ({ ...n, isOwner: false })),
     ]
-        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+        .sort((a, b) => {
+            const posA = positionByNoteId.get(a.id);
+            const posB = positionByNoteId.get(b.id);
+            if (posA !== undefined && posB !== undefined) return posA - posB;
+            if (posA !== undefined) return -1;
+            if (posB !== undefined) return 1;
+            return b.updatedAt.getTime() - a.updatedAt.getTime();
+        })
         .map((n) => ({
             ...n,
             alerts: alertsByNoteId.get(n.id) ?? [],
@@ -90,6 +103,7 @@ export async function editOrCreateNote(
     text: string,
     collaboratorsJson?: string,
     alertsJson?: string,
+    fixedPosition?: number,
 ) {
     const isEdit = typeof noteId === 'string' && noteId.length > 0;
 
@@ -138,6 +152,29 @@ export async function editOrCreateNote(
                     time: `${a.date}T${String(a.hours).padStart(2, '0')}:${String(a.minutes).padStart(2, '0')}:00`,
                 })),
             );
+        }
+
+        if (fixedPosition !== undefined) {
+            // Shift all existing positions >= fixedPosition upward by 1 to make room,
+            // excluding the note being saved (relevant in edit mode).
+            await tx
+                .update(noteOrder)
+                .set({ position: sql`${noteOrder.position} + 1` })
+                .where(
+                    and(
+                        eq(noteOrder.userId, userId),
+                        gte(noteOrder.position, fixedPosition),
+                        ...(isEdit ? [sql`${noteOrder.noteId} != ${targetNoteId}`] : []),
+                    ),
+                );
+
+            await tx
+                .insert(noteOrder)
+                .values({ userId, noteId: targetNoteId, position: fixedPosition })
+                .onConflictDoUpdate({
+                    target: [noteOrder.userId, noteOrder.noteId],
+                    set: { position: fixedPosition },
+                });
         }
     });
 }

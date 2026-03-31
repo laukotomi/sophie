@@ -37,6 +37,7 @@ notes.post('/', async (c) => {
             body.text,
             body.collaborators ? JSON.stringify(body.collaborators) : undefined,
             body.alerts ? JSON.stringify(body.alerts) : undefined,
+            typeof body.fixedPosition === 'number' ? body.fixedPosition : undefined,
         );
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -64,6 +65,7 @@ notes.put('/', async (c) => {
             body.text,
             body.collaborators ? JSON.stringify(body.collaborators) : undefined,
             body.alerts ? JSON.stringify(body.alerts) : undefined,
+            typeof body.fixedPosition === 'number' ? body.fixedPosition : undefined,
         );
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Unknown error';

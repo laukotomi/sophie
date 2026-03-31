@@ -174,6 +174,7 @@ class BackendClient {
   Future<void> createNote(
     String text, {
     List<({String userId, String right})> collaborators = const [],
+    int? fixedPosition,
   }) async {
     final uri = Uri.parse('$baseUrl/api/notes');
     final response = await http.post(
@@ -185,6 +186,7 @@ class BackendClient {
           'collaborators': collaborators
               .map((c) => {'userId': c.userId, 'right': c.right})
               .toList(),
+        if (fixedPosition != null) 'fixedPosition': fixedPosition,
       }),
     );
 
@@ -202,6 +204,7 @@ class BackendClient {
     String noteId,
     String text, {
     List<({String userId, String right})> collaborators = const [],
+    int? fixedPosition,
   }) async {
     final uri = Uri.parse('$baseUrl/api/notes');
     final response = await http.put(
@@ -214,6 +217,7 @@ class BackendClient {
           'collaborators': collaborators
               .map((c) => {'userId': c.userId, 'right': c.right})
               .toList(),
+        if (fixedPosition != null) 'fixedPosition': fixedPosition,
       }),
     );
 
