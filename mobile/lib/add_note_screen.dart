@@ -109,6 +109,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
     _textController = _MarkdownTextController(
       text: widget.existingNote?.text ?? '',
     );
+    _fixedPosition = widget.existingNote?.position;
     // Pre-populate collaborators from the existing note, matching against users
     _collaborators =
         widget.existingNote?.collaborators

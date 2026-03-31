@@ -85,6 +85,7 @@ export async function getDashboardData(userId: string) {
         })
         .map((n) => ({
             ...n,
+            position: positionByNoteId.get(n.id) ?? null,
             alerts: alertsByNoteId.get(n.id) ?? [],
             collaborators: (collaboratorsByNoteId.get(n.id) ?? []).map((c) => ({
                 id: c.userId,

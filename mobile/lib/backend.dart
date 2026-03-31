@@ -59,6 +59,7 @@ class Note {
   final String right;
   final bool isOwner;
   final String ownerId;
+  final int? position;
   final List<NoteAlert> alerts;
   final List<NoteCollaborator> collaborators;
 
@@ -70,6 +71,7 @@ class Note {
     required this.right,
     required this.isOwner,
     required this.ownerId,
+    this.position,
     required this.alerts,
     required this.collaborators,
   });
@@ -82,6 +84,7 @@ class Note {
     right: json['right'] as String,
     isOwner: json['isOwner'] as bool,
     ownerId: json['ownerId'] as String,
+    position: json['position'] as int?,
     alerts: (json['alerts'] as List<dynamic>)
         .map((a) => NoteAlert.fromJson(a as Map<String, dynamic>))
         .toList(),
