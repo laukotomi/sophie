@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.4
   flutter_markdown_plus: ^1.0.7
   http: ^1.6.0
   shared_preferences: ^2.5.5
@@ -17,6 +18,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/cony.webp"
+  adaptive_icon_foreground: "assets/cony.webp"
+  adaptive_icon_background: "#ffffff"
 
 flutter:
   uses-material-design: true
