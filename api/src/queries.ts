@@ -142,6 +142,18 @@ export async function editOrCreateNote(
     });
 }
 
+export async function deleteNote(userId: string, noteId: string): Promise<void> {
+    const [existing] = await db
+        .select({ id: note.id, owner: note.owner })
+        .from(note)
+        .where(eq(note.id, noteId));
+
+    if (!existing) throw new Error('Note not found');
+    if (existing.owner !== userId) throw new Error('Forbidden');
+
+    await db.delete(note).where(eq(note.id, noteId));
+}
+
 async function assertEditAccess(
     tx: Tx,
     noteId: string,

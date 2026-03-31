@@ -185,21 +185,39 @@ class _NoteCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (note.isOwner)
-                  _Chip(
-                    icon: Icons.edit,
-                    label: 'Owner',
-                    color: theme.colorScheme.primaryContainer,
-                    textColor: theme.colorScheme.onPrimaryContainer,
-                  )
-                else
-                  _Chip(
-                    icon: note.right == 'edit' ? Icons.edit : Icons.visibility,
-                    label: note.right == 'edit' ? 'Can edit' : 'View only',
-                    color: theme.colorScheme.secondaryContainer,
-                    textColor: theme.colorScheme.onSecondaryContainer,
-                  ),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (note.isOwner)
+                      _Chip(
+                        icon: Icons.edit,
+                        label: 'Owner',
+                        color: theme.colorScheme.primaryContainer,
+                        textColor: theme.colorScheme.onPrimaryContainer,
+                      )
+                    else
+                      _Chip(
+                        icon: note.right == 'edit'
+                            ? Icons.edit
+                            : Icons.visibility,
+                        label: note.right == 'edit' ? 'Can edit' : 'View only',
+                        color: theme.colorScheme.secondaryContainer,
+                        textColor: theme.colorScheme.onSecondaryContainer,
+                      ),
+                    ...note.collaborators.map(
+                      (c) => _Chip(
+                        icon: Icons.person,
+                        label: c.name,
+                        color: theme.colorScheme.tertiaryContainer,
+                        textColor: theme.colorScheme.onTertiaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
                 const Spacer(),
                 Text(
                   updatedAt,
@@ -209,22 +227,6 @@ class _NoteCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (note.collaborators.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                children: note.collaborators
-                    .map(
-                      (c) => _Chip(
-                        icon: Icons.person,
-                        label: c.name,
-                        color: theme.colorScheme.tertiaryContainer,
-                        textColor: theme.colorScheme.onTertiaryContainer,
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
             if (note.alerts.isNotEmpty) ...[
               const SizedBox(height: 8),
               Wrap(

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Session, User } from 'better-auth';
 import { auth } from '../auth.js';
-import { getDashboardData, editOrCreateNote } from '../queries.js';
+import { getDashboardData, editOrCreateNote, deleteNote } from '../queries.js';
 
 type Variables = { user: User; session: Session };
 
@@ -65,6 +65,26 @@ notes.put('/', async (c) => {
             body.collaborators ? JSON.stringify(body.collaborators) : undefined,
             body.alerts ? JSON.stringify(body.alerts) : undefined,
         );
+    } catch (e) {
+        const message = e instanceof Error ? e.message : 'Unknown error';
+        if (message === 'Note not found') return c.json({ error: message }, 404);
+        if (message === 'Forbidden') return c.json({ error: message }, 403);
+        return c.json({ error: message }, 500);
+    }
+
+    return new Response(null, { status: 204 });
+});
+
+notes.delete('/', async (c) => {
+    const user = c.get('user');
+    const body = await c.req.json().catch(() => null);
+
+    if (!body || typeof body.noteId !== 'string' || !body.noteId.trim()) {
+        return c.json({ error: 'noteId is required' }, 400);
+    }
+
+    try {
+        await deleteNote(user.id, body.noteId);
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Unknown error';
         if (message === 'Note not found') return c.json({ error: message }, 404);

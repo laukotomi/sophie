@@ -28,6 +28,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
   late final List<(AppUser, String)> _collaborators;
 
   bool _saving = false;
+  bool _deleting = false;
   String? _errorMessage;
 
   bool get _isEditing => widget.existingNote != null;
@@ -131,6 +132,77 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
       appBar: AppBar(
         title: Text(_isEditing ? 'Edit Note' : 'New Note'),
         actions: [
+          if (_isEditing)
+            IconButton(
+              icon: _deleting
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.delete_outline),
+              tooltip: 'Delete note',
+              onPressed: (_saving || _deleting)
+                  ? null
+                  : () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Delete note'),
+                          content: const Text(
+                            'This cannot be undone. Are you sure?',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.of(ctx).pop(true),
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true || !mounted) return;
+                      setState(() => _deleting = true);
+                      try {
+                        await widget.client.deleteNote(widget.existingNote!.id);
+                        if (mounted) Navigator.of(context).pop(true);
+                      } on UnauthorizedException {
+                        // handled by onUnauthorized
+                      } catch (_) {
+                        setState(
+                          () => _errorMessage = 'Failed to delete note.',
+                        );
+                      } finally {
+                        if (mounted) setState(() => _deleting = false);
+                      }
+                    },
+            ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.add),
+            onSelected: (value) {
+              if (value == 'collaborator') _openAddCollaborator();
+              if (value == 'alert') _openAddAlert();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'collaborator',
+                child: ListTile(
+                  leading: Icon(Icons.person_add),
+                  title: Text('Add collaborator'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'alert',
+                child: ListTile(
+                  leading: Icon(Icons.alarm_add),
+                  title: Text('Add alert'),
+                ),
+              ),
+            ],
+          ),
           TextButton(
             onPressed: _saving ? null : _save,
             child: _saving
@@ -172,24 +244,27 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
               ),
               if (_collaborators.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Text(
-                  'Collaborators',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-                const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
                   runSpacing: 4,
-                  children: _collaborators.map((c) {
-                    return Chip(
-                      avatar: Icon(
-                        c.$2 == 'edit' ? Icons.edit : Icons.visibility,
-                        size: 16,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      'Collaborators:',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    ..._collaborators.map(
+                      (c) => Chip(
+                        avatar: Icon(
+                          c.$2 == 'edit' ? Icons.edit : Icons.visibility,
+                          size: 16,
+                        ),
+                        label: Text(c.$1.name),
+                        onDeleted: () =>
+                            setState(() => _collaborators.remove(c)),
                       ),
-                      label: Text(c.$1.name),
-                      onDeleted: () => setState(() => _collaborators.remove(c)),
-                    );
-                  }).toList(),
+                    ),
+                  ],
                 ),
               ],
               if (_errorMessage != null) ...[
@@ -199,26 +274,6 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _openAddCollaborator,
-                      icon: const Icon(Icons.person_add),
-                      label: const Text('Add collaborator'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _openAddAlert,
-                      icon: const Icon(Icons.alarm_add),
-                      label: const Text('Add alert'),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),

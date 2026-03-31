@@ -234,4 +234,30 @@ class BackendClient {
       throw Exception('Failed to update note: ${response.statusCode}');
     }
   }
+
+  Future<void> deleteNote(String noteId) async {
+    final uri = Uri.parse('$baseUrl/api/notes');
+    final response = await http.delete(
+      uri,
+      headers: _headers,
+      body: jsonEncode({'noteId': noteId}),
+    );
+
+    if (response.statusCode == 401) {
+      onUnauthorized?.call();
+      throw const UnauthorizedException();
+    }
+
+    if (response.statusCode == 403) {
+      throw Exception('Forbidden');
+    }
+
+    if (response.statusCode == 404) {
+      throw Exception('Note not found');
+    }
+
+    if (response.statusCode != 204) {
+      throw Exception('Failed to delete note: ${response.statusCode}');
+    }
+  }
 }
