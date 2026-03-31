@@ -22,4 +22,4 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
 
-CMD ["node", "--env-file=.env", "dist/index.js"]
+CMD ["node", "dist/index.js"]

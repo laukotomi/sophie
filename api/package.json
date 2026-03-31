@@ -6,12 +6,12 @@
     "scripts": {
         "dev": "tsx watch --env-file=.env src/index.ts",
         "build": "tsc",
-        "start": "node --env-file=.env dist/index.js",
-        "db:push": "node --env-file=.env node_modules/.bin/drizzle-kit push",
-        "create-user": "tsx --env-file=.env scripts/create-user.ts",
-        "db:generate": "node --env-file=.env node_modules/.bin/drizzle-kit generate",
-        "db:migrate": "node --env-file=.env node_modules/.bin/drizzle-kit migrate",
-        "db:studio": "node --env-file=.env node_modules/.bin/drizzle-kit studio",
+        "start": "node dist/index.js",
+        "db:push": "node node_modules/.bin/drizzle-kit push",
+        "create-user": "tsx scripts/create-user.ts",
+        "db:generate": "node node_modules/.bin/drizzle-kit generate",
+        "db:migrate": "node node_modules/.bin/drizzle-kit migrate",
+        "db:studio": "node node_modules/.bin/drizzle-kit studio",
         "auth:schema": "better-auth generate --config src/auth.ts --output src/db/auth.schema.ts --yes"
     },
     "dependencies": {

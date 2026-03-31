@@ -55,20 +55,20 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
-      - run: mv build/app/outputs/apk/release/app-release.apk Sophie-${{ github.event.inputs.version }}.apk
+      - run: mv build/app/outputs/flutter-apk/app-release.apk Sophie-${{ github.event.inputs.version }}.apk
 
       - name: Create tag
         run: |
-          git tag -f v${{ github.event.inputs.version }}
-          git push --force origin v${{ github.event.inputs.version }}
+          git tag -f v${{ github.event.inputs.version }}-android
+          git push --force origin v${{ github.event.inputs.version }}-android
 
       - name: Create Gitea Release
         uses: akkuman/gitea-release-action@v1
         with:
-          name: Release ${{ github.event.inputs.version }}
-          tag_name: v${{ github.event.inputs.version }}
+          name: Release ${{ github.event.inputs.version }} (Android)
+          tag_name: v${{ github.event.inputs.version }}-android
           body: ${{ github.event.inputs.description }}
           draft: false
           prerelease: false
           files: |
-            src/Sophie-${{ github.event.inputs.version }}.apk
+            mobile/Sophie-${{ github.event.inputs.version }}.apk
