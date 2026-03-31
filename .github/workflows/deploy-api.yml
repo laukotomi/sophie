@@ -1,0 +1,50 @@
+name: Deploy api
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: eg. 1.0.0
+        required: true
+
+      description:
+        description: What's new?
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./api
+    env:
+      REGISTRY: gitea.lan
+      APP_NAME: sophie
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Create docker images
+        run: |
+          echo ${{ secrets.DOCKER_PASS }} | docker login -u ${{ secrets.DOCKER_USER }} --password-stdin ${{ env.REGISTRY }}
+          docker build -t ${{ env.REGISTRY }}/${{ secrets.DOCKER_USER }}/${{ env.APP_NAME }}:${{ github.event.inputs.version }} -t ${{ env.REGISTRY }}/${{ secrets.DOCKER_USER }}/${{ env.APP_NAME }}:latest .
+          docker push ${{ env.REGISTRY }}/${{ secrets.DOCKER_USER }}/${{ env.APP_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ secrets.DOCKER_USER }}/${{ env.APP_NAME }}:${{ github.event.inputs.version }}
+          docker image prune -a -f
+
+      - name: Create tag
+        run: |
+          git tag -f v${{ github.event.inputs.version }}
+          git push --force origin v${{ github.event.inputs.version }}
+
+      - name: Create Gitea Release
+        uses: akkuman/gitea-release-action@v1
+        with:
+          name: Release Sophie ${{ github.event.inputs.version }}
+          tag_name: v${{ github.event.inputs.version }}
+          body: ${{ github.event.inputs.description }}
+          draft: false
+          prerelease: false
