@@ -37,7 +37,14 @@ class _NotesScreenState extends State<NotesScreen> {
     return Scaffold(
       appBar: AppBar(
         forceMaterialTransparency: true,
-        title: const Text('My Notes'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('assets/cony.webp', height: 32, width: 32),
+            const SizedBox(width: 8),
+            const Text('Sophie Notes'),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
