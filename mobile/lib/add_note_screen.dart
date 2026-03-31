@@ -1,0 +1,228 @@
+import 'package:flutter/material.dart';
+import 'backend.dart';
+import 'add_collaborator_screen.dart';
+import 'add_alert_screen.dart';
+
+class AddNoteScreen extends StatefulWidget {
+  final BackendClient client;
+  final List<AppUser> users;
+  // When non-null the screen is in edit mode
+  final Note? existingNote;
+
+  const AddNoteScreen({
+    super.key,
+    required this.client,
+    required this.users,
+    this.existingNote,
+  });
+
+  @override
+  State<AddNoteScreen> createState() => _AddNoteScreenState();
+}
+
+class _AddNoteScreenState extends State<AddNoteScreen> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _textController;
+
+  // Each entry is (user, right)
+  late final List<(AppUser, String)> _collaborators;
+
+  bool _saving = false;
+  String? _errorMessage;
+
+  bool get _isEditing => widget.existingNote != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController(
+      text: widget.existingNote?.text ?? '',
+    );
+    // Pre-populate collaborators from the existing note, matching against users
+    _collaborators =
+        widget.existingNote?.collaborators
+            .map((c) {
+              final user = widget.users.where((u) => u.id == c.id).firstOrNull;
+              if (user == null) return null;
+              return (user, c.right);
+            })
+            .whereType<(AppUser, String)>()
+            .toList() ??
+        [];
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openAddCollaborator() async {
+    final alreadyAdded = _collaborators.map((c) => c.$1.id).toSet();
+    if (widget.existingNote != null) {
+      alreadyAdded.add(widget.existingNote!.ownerId);
+    }
+    final available = widget.users
+        .where((u) => !alreadyAdded.contains(u.id))
+        .toList();
+
+    if (available.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All users have already been added.')),
+      );
+      return;
+    }
+
+    final result = await Navigator.of(context).push<(AppUser, String)>(
+      MaterialPageRoute(
+        builder: (_) => AddCollaboratorScreen(users: available),
+      ),
+    );
+
+    if (result != null) {
+      setState(() => _collaborators.add(result));
+    }
+  }
+
+  Future<void> _openAddAlert() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AddAlertScreen()));
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _saving = true;
+      _errorMessage = null;
+    });
+
+    final collabs = _collaborators
+        .map((c) => (userId: c.$1.id, right: c.$2))
+        .toList();
+
+    try {
+      if (_isEditing) {
+        await widget.client.updateNote(
+          widget.existingNote!.id,
+          _textController.text.trim(),
+          collaborators: collabs,
+        );
+      } else {
+        await widget.client.createNote(
+          _textController.text.trim(),
+          collaborators: collabs,
+        );
+      }
+      if (mounted) Navigator.of(context).pop(true);
+    } on UnauthorizedException {
+      // onUnauthorized callback already handles logout
+    } catch (_) {
+      setState(() => _errorMessage = 'Failed to save note. Please try again.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_isEditing ? 'Edit Note' : 'New Note'),
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : _save,
+            child: _saving
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Save'),
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _textController,
+                  decoration: const InputDecoration(
+                    hintText: 'Write your note here…',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                  expands: true,
+                  maxLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                  autofocus: true,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Note cannot be empty.';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              if (_collaborators.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Collaborators',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: _collaborators.map((c) {
+                    return Chip(
+                      avatar: Icon(
+                        c.$2 == 'edit' ? Icons.edit : Icons.visibility,
+                        size: 16,
+                      ),
+                      label: Text(c.$1.name),
+                      onDeleted: () => setState(() => _collaborators.remove(c)),
+                    );
+                  }).toList(),
+                ),
+              ],
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _errorMessage!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _openAddCollaborator,
+                      icon: const Icon(Icons.person_add),
+                      label: const Text('Add collaborator'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _openAddAlert,
+                      icon: const Icon(Icons.alarm_add),
+                      label: const Text('Add alert'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
