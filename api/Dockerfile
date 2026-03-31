@@ -7,6 +7,8 @@ RUN npm ci
 
 COPY tsconfig.json ./
 COPY src/ ./src/
+COPY scripts/ ./scripts/
+RUN sed -i 's|\.\./src/|\.\./dist/|g' scripts/*.ts
 
 RUN npm run build
 
@@ -16,10 +18,15 @@ FROM node:alpine AS runner
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm install tsx drizzle-kit
 
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/scripts ./scripts
+COPY drizzle.config.ts ./
+COPY drizzle/ ./drizzle/
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+CMD ["./entrypoint.sh"]
