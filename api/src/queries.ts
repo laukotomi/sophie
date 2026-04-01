@@ -1,6 +1,6 @@
 import { db } from './db/index.js';
 import { user } from './db/auth.schema.js';
-import { note, collaborator, alert as alertTable, noteHistory, noteOrder, noteFiles } from './db/schema.js';
+import { note, collaborator, noteHistory, noteOrder, noteFiles } from './db/schema.js';
 import { eq, inArray, and, desc, notInArray, gte, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
@@ -47,13 +47,8 @@ export async function getDashboardData(userId: string) {
         ...collaboratedNotes.map((n) => n.id),
     ];
 
-    const [alerts, collaborators, positions, files] = noteIds.length > 0
+    const [collaborators, positions, files] = noteIds.length > 0
         ? await Promise.all([
-            db
-                .select({ id: alertTable.id, noteId: alertTable.noteId, time: alertTable.time })
-                .from(alertTable)
-                .where(inArray(alertTable.noteId, noteIds)),
-
             db
                 .select({
                     noteId: collaborator.noteId,
@@ -82,10 +77,9 @@ export async function getDashboardData(userId: string) {
                 .from(noteFiles)
                 .where(inArray(noteFiles.noteId, noteIds)),
         ])
-        : [[], [], [], []];
+        : [[], [], []];
 
     const positionByNoteId = new Map(positions.map((p) => [p.noteId, p.position]));
-    const alertsByNoteId = Map.groupBy(alerts, (a) => a.noteId);
     const collaboratorsByNoteId = Map.groupBy(collaborators, (c) => c.noteId);
     const filesByNoteId = Map.groupBy(files, (f) => f.noteId);
 
@@ -104,7 +98,6 @@ export async function getDashboardData(userId: string) {
         .map((n) => ({
             ...n,
             position: positionByNoteId.get(n.id) ?? null,
-            alerts: alertsByNoteId.get(n.id) ?? [],
             collaborators: (collaboratorsByNoteId.get(n.id) ?? []).map((c) => ({
                 id: c.userId,
                 name: c.userName,
@@ -127,7 +120,6 @@ export async function editOrCreateNote(
     noteId: string | null,
     text: string,
     collaboratorsJson?: string,
-    alertsJson?: string,
     fixedPosition?: number,
     files?: { name: string; type: string; size: number; stream: ReadableStream<Uint8Array> }[],
 ) {
@@ -136,9 +128,6 @@ export async function editOrCreateNote(
     // Pre-parse JSON before the transaction to fail fast on bad input
     const collabs = collaboratorsJson
         ? (JSON.parse(collaboratorsJson) as { userId: string; right: 'view' | 'edit' }[])
-        : [];
-    const alertItems = alertsJson
-        ? (JSON.parse(alertsJson) as { date: string; hours: number; minutes: number }[])
         : [];
 
     let targetNoteId!: string;
@@ -156,7 +145,6 @@ export async function editOrCreateNote(
 
             targetNoteId = noteId as string;
 
-            await tx.delete(alertTable).where(eq(alertTable.noteId, targetNoteId));
             await tx.delete(collaborator).where(eq(collaborator.noteId, targetNoteId));
         } else {
             const [newNote] = await tx
@@ -169,15 +157,6 @@ export async function editOrCreateNote(
         if (collabs.length > 0) {
             await tx.insert(collaborator).values(
                 collabs.map((c) => ({ noteId: targetNoteId, userId: c.userId, right: c.right })),
-            );
-        }
-
-        if (alertItems.length > 0) {
-            await tx.insert(alertTable).values(
-                alertItems.map((a) => ({
-                    noteId: targetNoteId,
-                    time: `${a.date}T${String(a.hours).padStart(2, '0')}:${String(a.minutes).padStart(2, '0')}:00`,
-                })),
             );
         }
 

@@ -32,7 +32,6 @@ notes.post('/', async (c) => {
     }
 
     const collaborators = form.get('collaborators');
-    const alerts = form.get('alerts');
     const fixedPositionRaw = form.get('fixedPosition');
     const fixedPosition = fixedPositionRaw !== null && fixedPositionRaw !== ''
         ? parseInt(fixedPositionRaw as string, 10)
@@ -52,7 +51,6 @@ notes.post('/', async (c) => {
             null,
             text,
             typeof collaborators === 'string' && collaborators ? collaborators : undefined,
-            typeof alerts === 'string' && alerts ? alerts : undefined,
             fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
             filesData.length > 0 ? filesData : undefined,
         );
@@ -78,7 +76,6 @@ notes.put('/', async (c) => {
     }
 
     const collaborators = form.get('collaborators');
-    const alerts = form.get('alerts');
     const fixedPositionRaw = form.get('fixedPosition');
     const fixedPosition = fixedPositionRaw !== null && fixedPositionRaw !== ''
         ? parseInt(fixedPositionRaw as string, 10)
@@ -98,7 +95,6 @@ notes.put('/', async (c) => {
             noteId,
             text,
             typeof collaborators === 'string' && collaborators ? collaborators : undefined,
-            typeof alerts === 'string' && alerts ? alerts : undefined,
             fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
             filesData.length > 0 ? filesData : undefined,
         );

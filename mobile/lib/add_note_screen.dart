@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'backend.dart';
 import 'add_collaborator_screen.dart';
-import 'add_alert_screen.dart';
 
 // Matches numbered list prefixes: "1. ", "12. ", etc. — captures the number separately.
 final _numberedPattern = RegExp(r'^(\s*)(\d+)(\.)\s+');
@@ -232,12 +231,6 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
     }
   }
 
-  Future<void> _openAddAlert() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const AddAlertScreen()));
-  }
-
   Future<void> _openAddFile() async {
     final result = await FilePicker.platform.pickFiles(allowMultiple: true);
     if (result == null || result.files.isEmpty) return;
@@ -386,7 +379,6 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
               icon: const Icon(Icons.add),
               onSelected: (value) {
                 if (value == 'collaborator') _openAddCollaborator();
-                if (value == 'alert') _openAddAlert();
                 if (value == 'file') _openAddFile();
               },
               itemBuilder: (_) => const [
@@ -395,13 +387,6 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
                   child: ListTile(
                     leading: Icon(Icons.person_add),
                     title: Text('Add collaborator'),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'alert',
-                  child: ListTile(
-                    leading: Icon(Icons.alarm_add),
-                    title: Text('Add alert'),
                   ),
                 ),
                 PopupMenuItem(

@@ -19,22 +19,6 @@ class AppUser {
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'email': email};
 }
 
-class NoteAlert {
-  final String id;
-  final String noteId;
-  final String time;
-
-  const NoteAlert({required this.id, required this.noteId, required this.time});
-
-  factory NoteAlert.fromJson(Map<String, dynamic> json) => NoteAlert(
-    id: json['id'] as String,
-    noteId: json['noteId'] as String,
-    time: json['time'] as String,
-  );
-
-  Map<String, dynamic> toJson() => {'id': id, 'noteId': noteId, 'time': time};
-}
-
 class NoteFile {
   final String id;
   final String fileName;
@@ -101,7 +85,6 @@ class Note {
   final bool isOwner;
   final String ownerId;
   final int? position;
-  final List<NoteAlert> alerts;
   final List<NoteCollaborator> collaborators;
   final List<NoteFile> files;
 
@@ -114,7 +97,6 @@ class Note {
     required this.isOwner,
     required this.ownerId,
     this.position,
-    required this.alerts,
     required this.collaborators,
     required this.files,
   });
@@ -128,9 +110,6 @@ class Note {
     isOwner: json['isOwner'] as bool,
     ownerId: json['ownerId'] as String,
     position: json['position'] as int?,
-    alerts: (json['alerts'] as List<dynamic>)
-        .map((a) => NoteAlert.fromJson(a as Map<String, dynamic>))
-        .toList(),
     collaborators: (json['collaborators'] as List<dynamic>)
         .map((c) => NoteCollaborator.fromJson(c as Map<String, dynamic>))
         .toList(),
@@ -148,7 +127,6 @@ class Note {
     'isOwner': isOwner,
     'ownerId': ownerId,
     'position': position,
-    'alerts': alerts.map((a) => a.toJson()).toList(),
     'collaborators': collaborators.map((c) => c.toJson()).toList(),
     'files': files.map((f) => f.toJson()).toList(),
   };

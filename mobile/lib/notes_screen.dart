@@ -373,22 +373,6 @@ class _NoteCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (note.alerts.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                children: note.alerts
-                    .map(
-                      (a) => _Chip(
-                        icon: Icons.alarm,
-                        label: _formatAlertTime(a.time),
-                        color: theme.colorScheme.errorContainer,
-                        textColor: theme.colorScheme.onErrorContainer,
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
             if (note.files.isNotEmpty) ...[
               const SizedBox(height: 8),
               Wrap(
@@ -411,15 +395,6 @@ class _NoteCard extends StatelessWidget {
     if (diff.inDays == 0) return 'Today';
     if (diff.inDays == 1) return 'Yesterday';
     return '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)}';
-  }
-
-  String _formatAlertTime(String isoTime) {
-    try {
-      final dt = DateTime.parse(isoTime);
-      return '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)} ${_pad(dt.hour)}:${_pad(dt.minute)}';
-    } catch (_) {
-      return isoTime;
-    }
   }
 
   // Replaces runs of extra blank lines with non-breaking space paragraphs so
