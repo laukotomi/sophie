@@ -4,6 +4,7 @@ import { cors } from 'hono/cors';
 import { auth } from './auth.js';
 import notesRouter from './routes/notes.js';
 import tokenRouter from './routes/token.js';
+import filesRouter from './routes/files.js';
 
 const app = new Hono();
 
@@ -19,6 +20,7 @@ app.on(['GET', 'POST'], '/api/auth/**', (c) => auth.handler(c.req.raw));
 // Application routes
 app.route('/api/token', tokenRouter);
 app.route('/api/notes', notesRouter);
+app.route('/api/files', filesRouter);
 
 app.get('/', (c) => c.json({ status: 'ok' }));
 

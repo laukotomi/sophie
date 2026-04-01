@@ -15,6 +15,13 @@
       "when": 1774987328469,
       "tag": "0001_safe_brood",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775073163657,
+      "tag": "0002_smiling_stranger",
+      "breakpoints": true
     }
   ]
 }

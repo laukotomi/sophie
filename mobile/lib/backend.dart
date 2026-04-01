@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AppUser {
   final String id;
@@ -13,6 +14,8 @@ class AppUser {
     name: json['name'] as String,
     email: json['email'] as String,
   );
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'email': email};
 }
 
 class NoteAlert {
@@ -27,6 +30,8 @@ class NoteAlert {
     noteId: json['noteId'] as String,
     time: json['time'] as String,
   );
+
+  Map<String, dynamic> toJson() => {'id': id, 'noteId': noteId, 'time': time};
 }
 
 class NoteCollaborator {
@@ -49,6 +54,13 @@ class NoteCollaborator {
         email: json['email'] as String,
         right: json['right'] as String,
       );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'email': email,
+    'right': right,
+  };
 }
 
 class Note {
@@ -92,6 +104,19 @@ class Note {
         .map((c) => NoteCollaborator.fromJson(c as Map<String, dynamic>))
         .toList(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'text': text,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'right': right,
+    'isOwner': isOwner,
+    'ownerId': ownerId,
+    'position': position,
+    'alerts': alerts.map((a) => a.toJson()).toList(),
+    'collaborators': collaborators.map((c) => c.toJson()).toList(),
+  };
 }
 
 class DashboardData {
@@ -114,6 +139,32 @@ class DashboardData {
         .map((n) => Note.fromJson(n as Map<String, dynamic>))
         .toList(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'user': user.toJson(),
+    'users': users.map((u) => u.toJson()).toList(),
+    'notes': notes.map((n) => n.toJson()).toList(),
+  };
+}
+
+class DashboardCache {
+  static const _key = 'cached_dashboard';
+
+  static Future<void> save(DashboardData data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, jsonEncode(data.toJson()));
+  }
+
+  static Future<DashboardData?> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
+    if (raw == null) return null;
+    try {
+      return DashboardData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 class UnauthorizedException implements Exception {
@@ -121,6 +172,8 @@ class UnauthorizedException implements Exception {
 }
 
 class BackendClient {
+  static const _timeout = Duration(seconds: 5);
+
   final String baseUrl;
   final void Function()? onUnauthorized;
   String? _token;
@@ -133,15 +186,21 @@ class BackendClient {
     'Content-Type': 'application/json',
   };
 
+  Map<String, String> get _authHeaders => {
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
+
   /// Signs in with email and password and stores the returned bearer token.
   /// Returns the token so callers can persist it.
   Future<String> login(String email, String password) async {
     final uri = Uri.parse('$baseUrl/api/token');
-    final response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
-    );
+    final response = await http
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email, 'password': password}),
+        )
+        .timeout(_timeout);
 
     if (response.statusCode == 401) {
       onUnauthorized?.call();
@@ -159,7 +218,7 @@ class BackendClient {
 
   Future<DashboardData> getDashboardData() async {
     final uri = Uri.parse('$baseUrl/api/notes');
-    final response = await http.get(uri, headers: _headers);
+    final response = await http.get(uri, headers: _headers).timeout(_timeout);
 
     if (response.statusCode == 401) {
       onUnauthorized?.call();
@@ -178,20 +237,34 @@ class BackendClient {
     String text, {
     List<({String userId, String right})> collaborators = const [],
     int? fixedPosition,
+    List<({String path, String name})> files = const [],
   }) async {
     final uri = Uri.parse('$baseUrl/api/notes');
-    final response = await http.post(
-      uri,
-      headers: _headers,
-      body: jsonEncode({
-        'text': text,
-        if (collaborators.isNotEmpty)
-          'collaborators': collaborators
-              .map((c) => {'userId': c.userId, 'right': c.right})
-              .toList(),
-        if (fixedPosition != null) 'fixedPosition': fixedPosition,
-      }),
-    );
+    final request = http.MultipartRequest('POST', uri)
+      ..headers.addAll(_authHeaders)
+      ..fields['text'] = text;
+    if (collaborators.isNotEmpty) {
+      request.fields['collaborators'] = jsonEncode(
+        collaborators
+            .map((c) => {'userId': c.userId, 'right': c.right})
+            .toList(),
+      );
+    }
+    if (fixedPosition != null) {
+      request.fields['fixedPosition'] = fixedPosition.toString();
+    }
+    for (final file in files) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'files',
+          file.path,
+          filename: file.name,
+        ),
+      );
+    }
+
+    final streamed = await request.send().timeout(_timeout);
+    final response = await http.Response.fromStream(streamed);
 
     if (response.statusCode == 401) {
       onUnauthorized?.call();
@@ -208,21 +281,35 @@ class BackendClient {
     String text, {
     List<({String userId, String right})> collaborators = const [],
     int? fixedPosition,
+    List<({String path, String name})> files = const [],
   }) async {
     final uri = Uri.parse('$baseUrl/api/notes');
-    final response = await http.put(
-      uri,
-      headers: _headers,
-      body: jsonEncode({
-        'noteId': noteId,
-        'text': text,
-        if (collaborators.isNotEmpty)
-          'collaborators': collaborators
-              .map((c) => {'userId': c.userId, 'right': c.right})
-              .toList(),
-        if (fixedPosition != null) 'fixedPosition': fixedPosition,
-      }),
-    );
+    final request = http.MultipartRequest('PUT', uri)
+      ..headers.addAll(_authHeaders)
+      ..fields['noteId'] = noteId
+      ..fields['text'] = text;
+    if (collaborators.isNotEmpty) {
+      request.fields['collaborators'] = jsonEncode(
+        collaborators
+            .map((c) => {'userId': c.userId, 'right': c.right})
+            .toList(),
+      );
+    }
+    if (fixedPosition != null) {
+      request.fields['fixedPosition'] = fixedPosition.toString();
+    }
+    for (final file in files) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'files',
+          file.path,
+          filename: file.name,
+        ),
+      );
+    }
+
+    final streamed = await request.send().timeout(_timeout);
+    final response = await http.Response.fromStream(streamed);
 
     if (response.statusCode == 401) {
       onUnauthorized?.call();
@@ -244,11 +331,9 @@ class BackendClient {
 
   Future<void> deleteNote(String noteId) async {
     final uri = Uri.parse('$baseUrl/api/notes');
-    final response = await http.delete(
-      uri,
-      headers: _headers,
-      body: jsonEncode({'noteId': noteId}),
-    );
+    final response = await http
+        .delete(uri, headers: _headers, body: jsonEncode({'noteId': noteId}))
+        .timeout(_timeout);
 
     if (response.statusCode == 401) {
       onUnauthorized?.call();

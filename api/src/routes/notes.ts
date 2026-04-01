@@ -24,20 +24,37 @@ notes.get('/', async (c) => {
 
 notes.post('/', async (c) => {
     const user = c.get('user');
-    const body = await c.req.json().catch(() => null);
+    const form = await c.req.formData().catch(() => null);
 
-    if (!body || typeof body.text !== 'string' || !body.text.trim()) {
+    const text = form?.get('text');
+    if (!form || typeof text !== 'string' || !text.trim()) {
         return c.json({ error: 'text is required' }, 400);
     }
+
+    const collaborators = form.get('collaborators');
+    const alerts = form.get('alerts');
+    const fixedPositionRaw = form.get('fixedPosition');
+    const fixedPosition = fixedPositionRaw !== null && fixedPositionRaw !== ''
+        ? parseInt(fixedPositionRaw as string, 10)
+        : undefined;
+
+    const fileEntries = form.getAll('files').filter((f): f is File => f instanceof File);
+    const filesData = fileEntries.map((f) => ({
+        name: f.name,
+        type: f.type || 'application/octet-stream',
+        size: f.size,
+        stream: f.stream(),
+    }));
 
     try {
         await editOrCreateNote(
             user.id,
             null,
-            body.text,
-            body.collaborators ? JSON.stringify(body.collaborators) : undefined,
-            body.alerts ? JSON.stringify(body.alerts) : undefined,
-            typeof body.fixedPosition === 'number' ? body.fixedPosition : undefined,
+            text,
+            typeof collaborators === 'string' && collaborators ? collaborators : undefined,
+            typeof alerts === 'string' && alerts ? alerts : undefined,
+            fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
+            filesData.length > 0 ? filesData : undefined,
         );
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -49,23 +66,41 @@ notes.post('/', async (c) => {
 
 notes.put('/', async (c) => {
     const user = c.get('user');
-    const body = await c.req.json().catch(() => null);
+    const form = await c.req.formData().catch(() => null);
 
-    if (!body || typeof body.noteId !== 'string' || !body.noteId.trim()) {
+    const noteId = form?.get('noteId');
+    if (!form || typeof noteId !== 'string' || !noteId.trim()) {
         return c.json({ error: 'noteId is required' }, 400);
     }
-    if (typeof body.text !== 'string' || !body.text.trim()) {
+    const text = form.get('text');
+    if (typeof text !== 'string' || !text.trim()) {
         return c.json({ error: 'text is required' }, 400);
     }
+
+    const collaborators = form.get('collaborators');
+    const alerts = form.get('alerts');
+    const fixedPositionRaw = form.get('fixedPosition');
+    const fixedPosition = fixedPositionRaw !== null && fixedPositionRaw !== ''
+        ? parseInt(fixedPositionRaw as string, 10)
+        : undefined;
+
+    const fileEntries = form.getAll('files').filter((f): f is File => f instanceof File);
+    const filesData = fileEntries.map((f) => ({
+        name: f.name,
+        type: f.type || 'application/octet-stream',
+        size: f.size,
+        stream: f.stream(),
+    }));
 
     try {
         await editOrCreateNote(
             user.id,
-            body.noteId,
-            body.text,
-            body.collaborators ? JSON.stringify(body.collaborators) : undefined,
-            body.alerts ? JSON.stringify(body.alerts) : undefined,
-            typeof body.fixedPosition === 'number' ? body.fixedPosition : undefined,
+            noteId,
+            text,
+            typeof collaborators === 'string' && collaborators ? collaborators : undefined,
+            typeof alerts === 'string' && alerts ? alerts : undefined,
+            fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
+            filesData.length > 0 ? filesData : undefined,
         );
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Unknown error';

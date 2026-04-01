@@ -1,7 +1,13 @@
 import { db } from './db/index.js';
 import { user } from './db/auth.schema.js';
-import { note, collaborator, alert as alertTable, noteHistory, noteOrder } from './db/schema.js';
+import { note, collaborator, alert as alertTable, noteHistory, noteOrder, noteFiles } from './db/schema.js';
 import { eq, inArray, and, desc, notInArray, gte, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { join } from 'node:path';
 
 type Tx = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
 
@@ -41,7 +47,7 @@ export async function getDashboardData(userId: string) {
         ...collaboratedNotes.map((n) => n.id),
     ];
 
-    const [alerts, collaborators, positions] = noteIds.length > 0
+    const [alerts, collaborators, positions, files] = noteIds.length > 0
         ? await Promise.all([
             db
                 .select({ id: alertTable.id, noteId: alertTable.noteId, time: alertTable.time })
@@ -64,12 +70,24 @@ export async function getDashboardData(userId: string) {
                 .select({ noteId: noteOrder.noteId, position: noteOrder.position })
                 .from(noteOrder)
                 .where(and(eq(noteOrder.userId, userId), inArray(noteOrder.noteId, noteIds))),
+
+            db
+                .select({
+                    noteId: noteFiles.noteId,
+                    id: noteFiles.id,
+                    fileName: noteFiles.fileName,
+                    fileSize: noteFiles.fileSize,
+                    createdAt: noteFiles.createdAt,
+                })
+                .from(noteFiles)
+                .where(inArray(noteFiles.noteId, noteIds)),
         ])
-        : [[], [], []];
+        : [[], [], [], []];
 
     const positionByNoteId = new Map(positions.map((p) => [p.noteId, p.position]));
     const alertsByNoteId = Map.groupBy(alerts, (a) => a.noteId);
     const collaboratorsByNoteId = Map.groupBy(collaborators, (c) => c.noteId);
+    const filesByNoteId = Map.groupBy(files, (f) => f.noteId);
 
     const notes = [
         ...ownedNotes.map((n) => ({ ...n, right: 'edit' as const, isOwner: true })),
@@ -93,6 +111,12 @@ export async function getDashboardData(userId: string) {
                 email: c.userEmail,
                 right: c.right,
             })),
+            files: (filesByNoteId.get(n.id) ?? []).map((f) => ({
+                id: f.id,
+                fileName: f.fileName,
+                fileSize: f.fileSize,
+                createdAt: f.createdAt,
+            })),
         }));
 
     return { users, notes };
@@ -105,6 +129,7 @@ export async function editOrCreateNote(
     collaboratorsJson?: string,
     alertsJson?: string,
     fixedPosition?: number,
+    files?: { name: string; type: string; size: number; stream: ReadableStream<Uint8Array> }[],
 ) {
     const isEdit = typeof noteId === 'string' && noteId.length > 0;
 
@@ -116,8 +141,9 @@ export async function editOrCreateNote(
         ? (JSON.parse(alertsJson) as { date: string; hours: number; minutes: number }[])
         : [];
 
+    let targetNoteId!: string;
+
     await db.transaction(async (tx) => {
-        let targetNoteId: string;
 
         if (isEdit) {
             const existing = await assertEditAccess(tx, noteId as string, userId);
@@ -176,8 +202,33 @@ export async function editOrCreateNote(
                     target: [noteOrder.userId, noteOrder.noteId],
                     set: { position: fixedPosition },
                 });
+        } else {
+            await tx
+                .delete(noteOrder)
+                .where(and(eq(noteOrder.userId, userId), eq(noteOrder.noteId, targetNoteId)));
         }
     });
+
+    if (files && files.length > 0) {
+        const uploadsDir = process.env.UPLOADS_DIR ?? './uploads';
+        const noteDir = join(uploadsDir, targetNoteId);
+        await mkdir(noteDir, { recursive: true });
+
+        for (const file of files) {
+            const id = randomUUID();
+            await db.insert(noteFiles).values({
+                id,
+                noteId: targetNoteId,
+                fileName: file.name,
+                fileType: file.type,
+                fileSize: file.size,
+            });
+            await pipeline(
+                Readable.fromWeb(file.stream as Parameters<typeof Readable.fromWeb>[0]),
+                createWriteStream(join(noteDir, id)),
+            );
+        }
+    }
 }
 
 export async function deleteNote(userId: string, noteId: string): Promise<void> {

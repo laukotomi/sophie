@@ -52,7 +52,7 @@ class _MainAppState extends State<MainApp> {
 
   Future<void> _onLoggedOut() async {
     final prefs = await SharedPreferences.getInstance();
-    await Future.wait([prefs.remove('auth_token'), prefs.remove('server_url')]);
+    await prefs.remove('auth_token');
     setState(() {
       _token = null;
       _client = null;

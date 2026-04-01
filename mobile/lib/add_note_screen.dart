@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'backend.dart';
 import 'add_collaborator_screen.dart';
 import 'add_alert_screen.dart';
@@ -90,6 +91,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
 
   // Each entry is (user, right)
   late final List<(AppUser, String)> _collaborators;
+  final List<PlatformFile> _pickedFiles = [];
 
   bool _saving = false;
   bool _deleting = false;
@@ -201,6 +203,19 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
     ).push(MaterialPageRoute(builder: (_) => const AddAlertScreen()));
   }
 
+  Future<void> _openAddFile() async {
+    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    if (result == null || result.files.isEmpty) return;
+    final newFiles = result.files.where((f) => f.path != null);
+    setState(() {
+      for (final f in newFiles) {
+        if (!_pickedFiles.any((e) => e.path == f.path)) {
+          _pickedFiles.add(f);
+        }
+      }
+    });
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -213,6 +228,10 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
         .map((c) => (userId: c.$1.id, right: c.$2))
         .toList();
 
+    final fileArgs = _pickedFiles
+        .map((f) => (path: f.path!, name: f.name))
+        .toList();
+
     try {
       if (_isEditing) {
         await widget.client.updateNote(
@@ -220,12 +239,14 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
           _textController.text.trim(),
           collaborators: collabs,
           fixedPosition: _fixedPosition,
+          files: fileArgs,
         );
       } else {
         await widget.client.createNote(
           _textController.text.trim(),
           collaborators: collabs,
           fixedPosition: _fixedPosition,
+          files: fileArgs,
         );
       }
       if (mounted) Navigator.of(context).pop(true);
@@ -331,6 +352,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
               onSelected: (value) {
                 if (value == 'collaborator') _openAddCollaborator();
                 if (value == 'alert') _openAddAlert();
+                if (value == 'file') _openAddFile();
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(
@@ -345,6 +367,13 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
                   child: ListTile(
                     leading: Icon(Icons.alarm_add),
                     title: Text('Add alert'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'file',
+                  child: ListTile(
+                    leading: Icon(Icons.attach_file),
+                    title: Text('Add file'),
                   ),
                 ),
               ],
@@ -408,6 +437,28 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
                           label: Text(c.$1.name),
                           onDeleted: () =>
                               setState(() => _collaborators.remove(c)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (_pickedFiles.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'Files:',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      ..._pickedFiles.map(
+                        (f) => Chip(
+                          avatar: const Icon(Icons.insert_drive_file, size: 16),
+                          label: Text(f.name),
+                          onDeleted: () =>
+                              setState(() => _pickedFiles.remove(f)),
                         ),
                       ),
                     ],

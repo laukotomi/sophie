@@ -56,4 +56,15 @@ export const noteOrder = pgTable('note_order', {
     uniqueIndex('note_order_user_id_note_id_idx').on(t.userId, t.noteId),
 ]);
 
+export const noteFiles = pgTable('note_files', {
+    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    noteId: text('note_id')
+        .notNull()
+        .references(() => note.id, { onDelete: 'cascade' }),
+    fileName: text('file_name').notNull(),
+    fileType: text('file_type').notNull(),
+    fileSize: integer('file_size').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 export * from './auth.schema.js';

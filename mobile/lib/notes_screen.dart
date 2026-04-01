@@ -19,16 +19,34 @@ class NotesScreen extends StatefulWidget {
 
 class _NotesScreenState extends State<NotesScreen> {
   late Future<DashboardData> _dataFuture;
+  bool _usingCache = false;
+
+  Future<DashboardData> _loadData() async {
+    try {
+      final data = await widget.client.getDashboardData();
+      await DashboardCache.save(data);
+      if (mounted) setState(() => _usingCache = false);
+      return data;
+    } catch (_) {
+      final cached = await DashboardCache.load();
+      if (cached != null) {
+        if (mounted) setState(() => _usingCache = true);
+        return cached;
+      }
+      rethrow;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _dataFuture = widget.client.getDashboardData();
+    _dataFuture = _loadData();
   }
 
   void _refresh() {
     setState(() {
-      _dataFuture = widget.client.getDashboardData();
+      _usingCache = false;
+      _dataFuture = _loadData();
     });
   }
 
@@ -46,6 +64,14 @@ class _NotesScreenState extends State<NotesScreen> {
           ],
         ),
         actions: [
+          if (_usingCache)
+            Tooltip(
+              message: 'Showing cached data — could not reach server',
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4),
+                child: Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Log out',
