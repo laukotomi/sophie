@@ -1,7 +1,23 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:open_filex/open_filex.dart';
 import 'backend.dart';
 import 'add_note_screen.dart';
+
+// Matches #tag (word chars directly after #, no space — distinguishes from markdown headings)
+final _tagRegex = RegExp(
+  r'(?<!\S)#([\p{L}\p{N}_]+)',
+  multiLine: true,
+  unicode: true,
+);
+
+List<String> _extractTags(String text) {
+  return _tagRegex
+      .allMatches(text)
+      .map((m) => m.group(1)!.toLowerCase())
+      .toList();
+}
 
 class NotesScreen extends StatefulWidget {
   final BackendClient client;
@@ -20,6 +36,8 @@ class NotesScreen extends StatefulWidget {
 class _NotesScreenState extends State<NotesScreen> {
   late Future<DashboardData> _dataFuture;
   bool _usingCache = false;
+  String? _selectedTag;
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   Future<DashboardData> _loadData() async {
     try {
@@ -27,7 +45,7 @@ class _NotesScreenState extends State<NotesScreen> {
       await DashboardCache.save(data);
       if (mounted) setState(() => _usingCache = false);
       return data;
-    } catch (_) {
+    } catch (error) {
       final cached = await DashboardCache.load();
       if (cached != null) {
         if (mounted) setState(() => _usingCache = true);
@@ -53,14 +71,82 @@ class _NotesScreenState extends State<NotesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: FutureBuilder<DashboardData>(
+        future: _dataFuture,
+        builder: (context, snapshot) {
+          final allTags = <String>{};
+          if (snapshot.hasData) {
+            for (final note in snapshot.data!.notes) {
+              allTags.addAll(_extractTags(note.text));
+            }
+          }
+          final sorted = allTags.toList()..sort();
+          return Drawer(
+            child: SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Text(
+                      'Tags',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  if (sorted.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('No tags found.'),
+                    )
+                  else
+                    Expanded(
+                      child: ListView(
+                        children: [
+                          if (_selectedTag != null)
+                            ListTile(
+                              leading: const Icon(Icons.clear),
+                              title: const Text('Clear filter'),
+                              onTap: () {
+                                setState(() => _selectedTag = null);
+                                Navigator.of(context).pop();
+                              },
+                            ),
+                          ...sorted.map(
+                            (tag) => ListTile(
+                              leading: const Icon(Icons.tag),
+                              title: Text('#$tag'),
+                              selected: _selectedTag == tag,
+                              onTap: () {
+                                setState(() => _selectedTag = tag);
+                                Navigator.of(context).pop();
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
       appBar: AppBar(
         forceMaterialTransparency: true,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset('assets/cony.webp', height: 32, width: 32),
-            const SizedBox(width: 8),
-            const Text('Sophie Notes'),
+            if (_selectedTag != null)
+              Flexible(
+                child: Text(
+                  'Sophie Notes  •  #$_selectedTag',
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                ),
+              )
+            else
+              const Text('Sophie Notes'),
           ],
         ),
         actions: [
@@ -147,19 +233,30 @@ class _NotesScreenState extends State<NotesScreen> {
           }
 
           final notes = snapshot.data!.notes;
+          final filtered = _selectedTag == null
+              ? notes
+              : notes
+                    .where((n) => _extractTags(n.text).contains(_selectedTag))
+                    .toList();
 
-          if (notes.isEmpty) {
-            return const Center(child: Text('No notes yet.'));
+          if (filtered.isEmpty) {
+            return Center(
+              child: Text(
+                _selectedTag != null
+                    ? 'No notes tagged #$_selectedTag.'
+                    : 'No notes yet.',
+              ),
+            );
           }
 
           return RefreshIndicator(
             onRefresh: () async => _refresh(),
             child: ListView.separated(
               padding: const EdgeInsets.all(12),
-              itemCount: notes.length,
+              itemCount: filtered.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
-                final note = notes[index];
+                final note = filtered[index];
                 return _NoteCard(
                   note: note,
                   users: snapshot.data!.users,
@@ -205,9 +302,11 @@ class _NoteCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: MarkdownBody(
-                    data: _preserveBlankLines(note.text),
-                    softLineBreak: true,
+                  child: SelectionArea(
+                    child: MarkdownBody(
+                      data: _preserveBlankLines(note.text),
+                      softLineBreak: true,
+                    ),
                   ),
                 ),
                 if (canEdit)
@@ -290,6 +389,16 @@ class _NoteCard extends StatelessWidget {
                     .toList(),
               ),
             ],
+            if (note.files.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: note.files
+                    .map((f) => _FileDownloadChip(file: f, client: client))
+                    .toList(),
+              ),
+            ],
           ],
         ),
       ),
@@ -324,6 +433,83 @@ class _NoteCard extends StatelessWidget {
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');
+}
+
+class _FileDownloadChip extends StatefulWidget {
+  final NoteFile file;
+  final BackendClient client;
+
+  const _FileDownloadChip({required this.file, required this.client});
+
+  @override
+  State<_FileDownloadChip> createState() => _FileDownloadChipState();
+}
+
+class _FileDownloadChipState extends State<_FileDownloadChip> {
+  bool _downloading = false;
+
+  Future<void> _download() async {
+    setState(() => _downloading = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final bytes = await widget.client.downloadFile(widget.file.id);
+      final tempPath = '${Directory.systemTemp.path}/${widget.file.fileName}';
+      await File(tempPath).writeAsBytes(bytes);
+      await OpenFilex.open(tempPath);
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Failed to download file')),
+      );
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.insert_drive_file_outlined,
+            size: 14,
+            color: theme.colorScheme.onSurface,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            widget.file.fileName,
+            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+          ),
+          const SizedBox(width: 4),
+          _downloading
+              ? SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                )
+              : GestureDetector(
+                  onTap: _download,
+                  child: Icon(
+                    Icons.download_outlined,
+                    size: 14,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Chip extends StatelessWidget {

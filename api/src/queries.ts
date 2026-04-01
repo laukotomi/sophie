@@ -3,7 +3,7 @@ import { user } from './db/auth.schema.js';
 import { note, collaborator, alert as alertTable, noteHistory, noteOrder, noteFiles } from './db/schema.js';
 import { eq, inArray, and, desc, notInArray, gte, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -240,7 +240,18 @@ export async function deleteNote(userId: string, noteId: string): Promise<void> 
     if (!existing) throw new Error('Note not found');
     if (existing.owner !== userId) throw new Error('Forbidden');
 
+    const files = await db
+        .select({ id: noteFiles.id })
+        .from(noteFiles)
+        .where(eq(noteFiles.noteId, noteId));
+
     await db.delete(note).where(eq(note.id, noteId));
+
+    if (files.length > 0) {
+        const uploadsDir = process.env.UPLOADS_DIR ?? './uploads';
+        const noteDir = join(uploadsDir, noteId);
+        await rm(noteDir, { recursive: true, force: true });
+    }
 }
 
 async function assertEditAccess(

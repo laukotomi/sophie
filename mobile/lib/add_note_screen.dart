@@ -92,6 +92,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
   // Each entry is (user, right)
   late final List<(AppUser, String)> _collaborators;
   final List<PlatformFile> _pickedFiles = [];
+  late final List<NoteFile> _existingFiles;
 
   bool _saving = false;
   bool _deleting = false;
@@ -112,6 +113,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
       text: widget.existingNote?.text ?? '',
     );
     _fixedPosition = widget.existingNote?.position;
+    _existingFiles = List.of(widget.existingNote?.files ?? []);
     // Pre-populate collaborators from the existing note, matching against users
     _collaborators =
         widget.existingNote?.collaborators
@@ -129,6 +131,39 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
   void dispose() {
     _textController.dispose();
     super.dispose();
+  }
+
+  Future<void> _deleteExistingFile(NoteFile file) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete file'),
+        content: Text(
+          'Are you sure you want to delete "${file.fileName}"? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.client.deleteFile(file.id);
+      if (mounted) setState(() => _existingFiles.remove(file));
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Failed to delete file')),
+      );
+    }
   }
 
   Future<void> _openSettings() async {
@@ -417,6 +452,30 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
                     },
                   ),
                 ),
+                if (_existingFiles.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'Attached files:',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      ..._existingFiles.map(
+                        (f) => Chip(
+                          avatar: const Icon(
+                            Icons.insert_drive_file_outlined,
+                            size: 16,
+                          ),
+                          label: Text(f.fileName),
+                          onDeleted: () => _deleteExistingFile(f),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 if (_collaborators.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Wrap(

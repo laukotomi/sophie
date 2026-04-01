@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -32,6 +33,34 @@ class NoteAlert {
   );
 
   Map<String, dynamic> toJson() => {'id': id, 'noteId': noteId, 'time': time};
+}
+
+class NoteFile {
+  final String id;
+  final String fileName;
+  final int fileSize;
+  final DateTime createdAt;
+
+  const NoteFile({
+    required this.id,
+    required this.fileName,
+    required this.fileSize,
+    required this.createdAt,
+  });
+
+  factory NoteFile.fromJson(Map<String, dynamic> json) => NoteFile(
+    id: json['id'] as String,
+    fileName: json['fileName'] as String,
+    fileSize: json['fileSize'] as int,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'fileName': fileName,
+    'fileSize': fileSize,
+    'createdAt': createdAt.toIso8601String(),
+  };
 }
 
 class NoteCollaborator {
@@ -74,6 +103,7 @@ class Note {
   final int? position;
   final List<NoteAlert> alerts;
   final List<NoteCollaborator> collaborators;
+  final List<NoteFile> files;
 
   const Note({
     required this.id,
@@ -86,6 +116,7 @@ class Note {
     this.position,
     required this.alerts,
     required this.collaborators,
+    required this.files,
   });
 
   factory Note.fromJson(Map<String, dynamic> json) => Note(
@@ -103,6 +134,9 @@ class Note {
     collaborators: (json['collaborators'] as List<dynamic>)
         .map((c) => NoteCollaborator.fromJson(c as Map<String, dynamic>))
         .toList(),
+    files: (json['files'] as List<dynamic>? ?? [])
+        .map((f) => NoteFile.fromJson(f as Map<String, dynamic>))
+        .toList(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -116,6 +150,7 @@ class Note {
     'position': position,
     'alerts': alerts.map((a) => a.toJson()).toList(),
     'collaborators': collaborators.map((c) => c.toJson()).toList(),
+    'files': files.map((f) => f.toJson()).toList(),
   };
 }
 
@@ -173,6 +208,7 @@ class UnauthorizedException implements Exception {
 
 class BackendClient {
   static const _timeout = Duration(seconds: 5);
+  static const _uploadTimeout = Duration(seconds: 30);
 
   final String baseUrl;
   final void Function()? onUnauthorized;
@@ -326,6 +362,50 @@ class BackendClient {
 
     if (response.statusCode != 204) {
       throw Exception('Failed to update note: ${response.statusCode}');
+    }
+  }
+
+  Future<Uint8List> downloadFile(String fileId) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/files?id=${Uri.encodeQueryComponent(fileId)}',
+    );
+    final response = await http
+        .get(uri, headers: _authHeaders)
+        .timeout(_uploadTimeout);
+
+    if (response.statusCode == 401) {
+      onUnauthorized?.call();
+      throw const UnauthorizedException();
+    }
+
+    if (response.statusCode == 403) throw Exception('Forbidden');
+    if (response.statusCode == 404) throw Exception('File not found');
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to download file: \${response.statusCode}');
+    }
+
+    return response.bodyBytes;
+  }
+
+  Future<void> deleteFile(String fileId) async {
+    final uri = Uri.parse(
+      '$baseUrl/api/files?id=${Uri.encodeQueryComponent(fileId)}',
+    );
+    final response = await http
+        .delete(uri, headers: _authHeaders)
+        .timeout(_timeout);
+
+    if (response.statusCode == 401) {
+      onUnauthorized?.call();
+      throw const UnauthorizedException();
+    }
+
+    if (response.statusCode == 403) throw Exception('Forbidden');
+    if (response.statusCode == 404) throw Exception('File not found');
+
+    if (response.statusCode != 204) {
+      throw Exception('Failed to delete file: \${response.statusCode}');
     }
   }
 
