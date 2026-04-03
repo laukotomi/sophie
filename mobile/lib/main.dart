@@ -63,6 +63,7 @@ class _MainAppState extends State<MainApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: ThemeData.dark(useMaterial3: true),
+      builder: (context, child) => SafeArea(child: child!),
       home: _token == null
           ? LoginScreen(
               initialServerUrl: widget.initialServerUrl,

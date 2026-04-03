@@ -38,6 +38,7 @@ class _NotesScreenState extends State<NotesScreen> {
   bool _usingCache = false;
   String? _selectedTag;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _scrollController = ScrollController();
 
   Future<DashboardData> _loadData() async {
     try {
@@ -59,6 +60,12 @@ class _NotesScreenState extends State<NotesScreen> {
   void initState() {
     super.initState();
     _dataFuture = _loadData();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _refresh() {
@@ -252,6 +259,7 @@ class _NotesScreenState extends State<NotesScreen> {
           return RefreshIndicator(
             onRefresh: () async => _refresh(),
             child: ListView.separated(
+              controller: _scrollController,
               padding: const EdgeInsets.all(12),
               itemCount: filtered.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -262,6 +270,7 @@ class _NotesScreenState extends State<NotesScreen> {
                   users: snapshot.data!.users,
                   client: widget.client,
                   onEdited: _refresh,
+                  scrollController: _scrollController,
                 );
               },
             ),
@@ -272,118 +281,211 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 }
 
-class _NoteCard extends StatelessWidget {
+class _NoteCard extends StatefulWidget {
   final Note note;
   final List<AppUser> users;
   final BackendClient client;
   final VoidCallback onEdited;
+  final ScrollController scrollController;
 
   const _NoteCard({
     required this.note,
     required this.users,
     required this.client,
     required this.onEdited,
+    required this.scrollController,
   });
+
+  @override
+  State<_NoteCard> createState() => _NoteCardState();
+}
+
+class _NoteCardState extends State<_NoteCard> {
+  final _cardKey = GlobalKey();
+  final _overlayController = OverlayPortalController();
+  double _overlayTop = 0;
+  double _overlayRight = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void didUpdateWidget(_NoteCard old) {
+    super.didUpdateWidget(old);
+    if (old.scrollController != widget.scrollController) {
+      old.scrollController.removeListener(_onScroll);
+      widget.scrollController.addListener(_onScroll);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.scrollController.removeListener(_onScroll);
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!mounted) return;
+    final canEdit = widget.note.isOwner || widget.note.right == 'edit';
+    if (!canEdit) return;
+
+    final renderBox = _cardKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return;
+
+    final size = renderBox.size;
+    final topLeft = renderBox.localToGlobal(Offset.zero);
+    final cardTop = topLeft.dy;
+    final cardBottom = cardTop + size.height;
+
+    final mq = MediaQuery.of(context);
+    final viewTop = mq.padding.top + kToolbarHeight;
+
+    // Float when the edit button itself (16px padding + ~40px compact button = 56px
+    // from card top) has scrolled behind the AppBar, but the card is still visible.
+    final shouldFloat = cardTop < viewTop && cardBottom > viewTop + 56 + 75;
+
+    debugPrint(
+      '[NoteCard] cardTop=$cardTop cardBottom=$cardBottom '
+      'viewTop=$viewTop buttonBottom=${cardTop + 56} '
+      'shouldFloat=$shouldFloat isShowing=${_overlayController.isShowing}',
+    );
+
+    if (shouldFloat && !_overlayController.isShowing) {
+      _overlayTop = viewTop + 4;
+      _overlayRight =
+          MediaQuery.sizeOf(context).width - (topLeft.dx + size.width) + 20;
+      _overlayController.show();
+    } else if (!shouldFloat && _overlayController.isShowing) {
+      _overlayController.hide();
+    }
+  }
+
+  Future<void> _openEdit(BuildContext ctx) async {
+    final edited = await Navigator.of(ctx).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AddNoteScreen(
+          client: widget.client,
+          users: widget.users,
+          existingNote: widget.note,
+        ),
+      ),
+    );
+    if (edited == true) widget.onEdited();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final updatedAt = _formatDate(note.updatedAt);
+    final updatedAt = _formatDate(widget.note.updatedAt);
 
-    final canEdit = note.isOwner || note.right == 'edit';
+    final canEdit = widget.note.isOwner || widget.note.right == 'edit';
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: SelectionArea(
-                    child: MarkdownBody(
-                      data: _preserveBlankLines(note.text),
-                      softLineBreak: true,
+    return OverlayPortal(
+      controller: _overlayController,
+      overlayChildBuilder: (ctx) => Positioned(
+        top: _overlayTop,
+        right: _overlayRight,
+        child: Material(
+          color: Colors.transparent,
+          child: IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Edit note',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _openEdit(ctx),
+          ),
+        ),
+      ),
+      child: Card(
+        key: _cardKey,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: SelectionArea(
+                      child: MarkdownBody(
+                        data: _preserveBlankLines(widget.note.text),
+                        softLineBreak: true,
+                      ),
                     ),
                   ),
-                ),
-                if (canEdit)
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined),
-                    tooltip: 'Edit note',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () async {
-                      final edited = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(
-                          builder: (_) => AddNoteScreen(
-                            client: client,
-                            users: users,
-                            existingNote: note,
-                          ),
+                  if (canEdit)
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined),
+                      tooltip: 'Edit note',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _openEdit(context),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (widget.note.isOwner)
+                        _Chip(
+                          icon: Icons.edit,
+                          label: 'Owner',
+                          color: theme.colorScheme.primaryContainer,
+                          textColor: theme.colorScheme.onPrimaryContainer,
+                        )
+                      else
+                        _Chip(
+                          icon: widget.note.right == 'edit'
+                              ? Icons.edit
+                              : Icons.visibility,
+                          label: widget.note.right == 'edit'
+                              ? 'Can edit'
+                              : 'View only',
+                          color: theme.colorScheme.secondaryContainer,
+                          textColor: theme.colorScheme.onSecondaryContainer,
                         ),
-                      );
-                      if (edited == true) onEdited();
-                    },
+                      ...widget.note.collaborators.map(
+                        (c) => _Chip(
+                          icon: Icons.person,
+                          label: c.name,
+                          color: theme.colorScheme.tertiaryContainer,
+                          textColor: theme.colorScheme.onTertiaryContainer,
+                        ),
+                      ),
+                    ],
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
+                  const Spacer(),
+                  Text(
+                    updatedAt,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+              if (widget.note.files.isNotEmpty) ...[
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (note.isOwner)
-                      _Chip(
-                        icon: Icons.edit,
-                        label: 'Owner',
-                        color: theme.colorScheme.primaryContainer,
-                        textColor: theme.colorScheme.onPrimaryContainer,
+                  children: widget.note.files
+                      .map(
+                        (f) =>
+                            _FileDownloadChip(file: f, client: widget.client),
                       )
-                    else
-                      _Chip(
-                        icon: note.right == 'edit'
-                            ? Icons.edit
-                            : Icons.visibility,
-                        label: note.right == 'edit' ? 'Can edit' : 'View only',
-                        color: theme.colorScheme.secondaryContainer,
-                        textColor: theme.colorScheme.onSecondaryContainer,
-                      ),
-                    ...note.collaborators.map(
-                      (c) => _Chip(
-                        icon: Icons.person,
-                        label: c.name,
-                        color: theme.colorScheme.tertiaryContainer,
-                        textColor: theme.colorScheme.onTertiaryContainer,
-                      ),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                Text(
-                  updatedAt,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                      .toList(),
                 ),
               ],
-            ),
-            if (note.files.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: note.files
-                    .map((f) => _FileDownloadChip(file: f, client: client))
-                    .toList(),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );

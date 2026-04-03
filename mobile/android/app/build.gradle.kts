@@ -37,8 +37,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            resValue("string", "app_name", "Sophie Test")
+        }
         release {
             signingConfig = signingConfigs.getByName("release")
+            resValue("string", "app_name", "Sophie")
         }
     }
 }
