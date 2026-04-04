@@ -1,24 +1,10 @@
 import { Hono } from 'hono';
-import type { Session, User } from 'better-auth';
-import { auth } from '../auth.js';
 import { db } from '../db/index.js';
 import { note, collaborator, noteFiles } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { createReadStream, unlink } from 'node:fs';
-import { join } from 'node:path';
-
-type Variables = { user: User; session: Session };
-
-const files = new Hono<{ Variables: Variables }>();
-
-// Auth middleware
-files.use(async (c, next) => {
-    const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    if (!session) return c.json({ error: 'Unauthorized' }, 401);
-    c.set('user', session.user);
-    c.set('session', session.session);
-    await next();
-});
+import { requireAuth, type AuthVariables } from '../middleware.js';
+import { noteFilePath } from '../utils.js';
 
 type AccessLevel = 'any' | 'edit';
 
@@ -59,6 +45,10 @@ async function resolveFileAccess(
     return { record, error: null };
 }
 
+const files = new Hono<{ Variables: AuthVariables }>();
+
+files.use(requireAuth);
+
 files.get('/', async (c) => {
     const user = c.get('user');
     const fileId = c.req.query('id');
@@ -70,8 +60,7 @@ files.get('/', async (c) => {
     const { record, error } = await resolveFileAccess(fileId, user.id, 'any');
     if (error) return error;
 
-    const uploadsDir = process.env.UPLOADS_DIR ?? './uploads';
-    const filePath = join(uploadsDir, record.noteId, record.id);
+    const filePath = noteFilePath(record.noteId, record.id);
 
     const readStream = createReadStream(filePath);
 
@@ -113,8 +102,7 @@ files.delete('/', async (c) => {
 
     await db.delete(noteFiles).where(eq(noteFiles.id, record.id));
 
-    const uploadsDir = process.env.UPLOADS_DIR ?? './uploads';
-    const filePath = join(uploadsDir, record.noteId, record.id);
+    const filePath = noteFilePath(record.noteId, record.id);
     await new Promise<void>((resolve) => unlink(filePath, () => resolve()));
 
     return new Response(null, { status: 204 });

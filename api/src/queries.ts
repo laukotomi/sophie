@@ -1,21 +1,23 @@
 import { db } from './db/index.js';
 import { user } from './db/auth.schema.js';
 import { note, collaborator, noteHistory, noteOrder, noteFiles } from './db/schema.js';
-import { eq, inArray, and, desc, notInArray, gte, sql } from 'drizzle-orm';
+import { eq, inArray, and, desc, notInArray, gte, sql, asc } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { join } from 'node:path';
+import { noteDirPath, noteFilePath } from './utils.js';
 
 type Tx = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
+type UploadedFile = { id: string; name: string; type: string; size: number };
 
 export async function getDashboardData(userId: string) {
     const [users, ownedNotes, collaboratedNotes] = await Promise.all([
         db
             .select({ id: user.id, name: user.name, email: user.email })
-            .from(user),
+            .from(user)
+            .orderBy(asc(user.name)),
 
         db
             .select({
@@ -55,12 +57,9 @@ export async function getDashboardData(userId: string) {
                 .select({
                     noteId: collaborator.noteId,
                     right: collaborator.right,
-                    userId: user.id,
-                    userName: user.name,
-                    userEmail: user.email,
+                    userId: collaborator.userId,
                 })
                 .from(collaborator)
-                .innerJoin(user, eq(user.id, collaborator.userId))
                 .where(inArray(collaborator.noteId, noteIds)),
 
             db
@@ -82,6 +81,7 @@ export async function getDashboardData(userId: string) {
         : [[], [], []];
 
     const positionByNoteId = new Map(positions.map((p) => [p.noteId, p.position]));
+    const userById = new Map(users.map((u) => [u.id, u]));
     const collaboratorsByNoteId = Map.groupBy(collaborators, (c) => c.noteId);
     const filesByNoteId = Map.groupBy(files, (f) => f.noteId);
 
@@ -101,12 +101,11 @@ export async function getDashboardData(userId: string) {
             ...n,
             position: positionByNoteId.get(n.id) ?? null,
             color: n.color ?? null,
-            collaborators: (collaboratorsByNoteId.get(n.id) ?? []).map((c) => ({
-                id: c.userId,
-                name: c.userName,
-                email: c.userEmail,
-                right: c.right,
-            })),
+            collaborators: (collaboratorsByNoteId.get(n.id) ?? []).flatMap((c) => {
+                const u = userById.get(c.userId);
+                if (!u) return [];
+                return [{ id: c.userId, name: u.name, email: u.email, right: c.right }];
+            }),
             files: (filesByNoteId.get(n.id) ?? []).map((f) => ({
                 id: f.id,
                 fileName: f.fileName,
@@ -134,83 +133,86 @@ export async function editOrCreateNote(
         ? (JSON.parse(collaboratorsJson) as { userId: string; right: 'view' | 'edit' }[])
         : [];
 
-    let targetNoteId!: string;
+    // Generate the note ID upfront so it can be used for both the upload
+    // directory and the DB insert.
+    const targetNoteId = isEdit ? (noteId as string) : randomUUID();
 
-    await db.transaction(async (tx) => {
+    // Upload files to disk before the transaction so we don't hold the DB
+    // connection open during slow I/O. If the transaction later fails we clean up.
+    const { uploadedFiles } = await uploadFiles(targetNoteId, files);
 
-        if (isEdit) {
-            const existing = await assertEditAccess(tx, noteId as string, userId);
-            await saveNoteBackup(tx, noteId as string, existing.text);
+    try {
+        await db.transaction(async (tx) => {
 
-            await tx
-                .update(note)
-                .set({ text: text.trim(), color: color ?? null })
-                .where(eq(note.id, noteId as string));
+            if (isEdit) {
+                const existing = await assertEditAccess(tx, targetNoteId, userId);
+                await saveNoteBackup(tx, targetNoteId, existing.text);
 
-            targetNoteId = noteId as string;
+                await tx
+                    .update(note)
+                    .set({ text: text.trim(), color: color ?? null })
+                    .where(eq(note.id, targetNoteId));
 
-            await tx.delete(collaborator).where(eq(collaborator.noteId, targetNoteId));
-        } else {
-            const [newNote] = await tx
-                .insert(note)
-                .values({ text: text.trim(), color: color ?? null, owner: userId })
-                .returning({ id: note.id });
-            targetNoteId = newNote.id;
-        }
+                await tx.delete(collaborator).where(eq(collaborator.noteId, targetNoteId));
+            } else {
+                await tx
+                    .insert(note)
+                    .values({ id: targetNoteId, text: text.trim(), color: color ?? null, owner: userId });
+            }
 
-        if (collabs.length > 0) {
-            await tx.insert(collaborator).values(
-                collabs.map((c) => ({ noteId: targetNoteId, userId: c.userId, right: c.right })),
-            );
-        }
-
-        if (fixedPosition !== undefined) {
-            // Shift all existing positions >= fixedPosition upward by 1 to make room,
-            // excluding the note being saved (relevant in edit mode).
-            await tx
-                .update(noteOrder)
-                .set({ position: sql`${noteOrder.position} + 1` })
-                .where(
-                    and(
-                        eq(noteOrder.userId, userId),
-                        gte(noteOrder.position, fixedPosition),
-                        ...(isEdit ? [sql`${noteOrder.noteId} != ${targetNoteId}`] : []),
-                    ),
+            if (collabs.length > 0) {
+                await tx.insert(collaborator).values(
+                    collabs.map((c) => ({ noteId: targetNoteId, userId: c.userId, right: c.right })),
                 );
+            }
 
-            await tx
-                .insert(noteOrder)
-                .values({ userId, noteId: targetNoteId, position: fixedPosition })
-                .onConflictDoUpdate({
-                    target: [noteOrder.userId, noteOrder.noteId],
-                    set: { position: fixedPosition },
-                });
-        } else {
-            await tx
-                .delete(noteOrder)
-                .where(and(eq(noteOrder.userId, userId), eq(noteOrder.noteId, targetNoteId)));
-        }
-    });
+            if (fixedPosition !== undefined) {
+                // Shift all existing positions >= fixedPosition upward by 1 to make room,
+                // excluding the note being saved (relevant in edit mode).
+                await tx
+                    .update(noteOrder)
+                    .set({ position: sql`${noteOrder.position} + 1` })
+                    .where(
+                        and(
+                            eq(noteOrder.userId, userId),
+                            gte(noteOrder.position, fixedPosition),
+                            ...(isEdit ? [sql`${noteOrder.noteId} != ${targetNoteId}`] : []),
+                        ),
+                    );
 
-    if (files && files.length > 0) {
-        const uploadsDir = process.env.UPLOADS_DIR ?? './uploads';
-        const noteDir = join(uploadsDir, targetNoteId);
-        await mkdir(noteDir, { recursive: true });
+                await tx
+                    .insert(noteOrder)
+                    .values({ userId, noteId: targetNoteId, position: fixedPosition })
+                    .onConflictDoUpdate({
+                        target: [noteOrder.userId, noteOrder.noteId],
+                        set: { position: fixedPosition },
+                    });
+            } else {
+                await tx
+                    .delete(noteOrder)
+                    .where(and(eq(noteOrder.userId, userId), eq(noteOrder.noteId, targetNoteId)));
+            }
 
-        for (const file of files) {
-            const id = randomUUID();
-            await db.insert(noteFiles).values({
-                id,
-                noteId: targetNoteId,
-                fileName: file.name,
-                fileType: file.type,
-                fileSize: file.size,
-            });
-            await pipeline(
-                Readable.fromWeb(file.stream as Parameters<typeof Readable.fromWeb>[0]),
-                createWriteStream(join(noteDir, id)),
+            if (uploadedFiles.length > 0) {
+                await tx.insert(noteFiles).values(
+                    uploadedFiles.map((f) => ({
+                        id: f.id,
+                        noteId: targetNoteId,
+                        fileName: f.name,
+                        fileType: f.type,
+                        fileSize: f.size,
+                    })),
+                );
+            }
+        });
+    } catch (e) {
+        // Transaction failed — remove any files we already wrote to disk.
+        if (uploadedFiles.length > 0) {
+            await Promise.allSettled(
+                uploadedFiles.map((f) => rm(noteFilePath(targetNoteId, f.id), { force: true })),
             );
         }
+        throw e;
     }
 }
 
@@ -231,10 +233,30 @@ export async function deleteNote(userId: string, noteId: string): Promise<void> 
     await db.delete(note).where(eq(note.id, noteId));
 
     if (files.length > 0) {
-        const uploadsDir = process.env.UPLOADS_DIR ?? './uploads';
-        const noteDir = join(uploadsDir, noteId);
-        await rm(noteDir, { recursive: true, force: true });
+        await rm(noteDirPath(noteId), { recursive: true, force: true });
     }
+}
+
+async function uploadFiles(
+    noteId: string,
+    files?: { name: string; type: string; size: number; stream: ReadableStream<Uint8Array> }[],
+): Promise<{ uploadedFiles: UploadedFile[] }> {
+    if (!files || files.length === 0) return { uploadedFiles: [] };
+
+    const noteDir = noteDirPath(noteId);
+    await mkdir(noteDir, { recursive: true });
+
+    const uploadedFiles: UploadedFile[] = [];
+    for (const file of files) {
+        const id = randomUUID();
+        await pipeline(
+            Readable.fromWeb(file.stream as Parameters<typeof Readable.fromWeb>[0]),
+            createWriteStream(noteFilePath(noteId, id)),
+        );
+        uploadedFiles.push({ id, name: file.name, type: file.type, size: file.size });
+    }
+
+    return { uploadedFiles };
 }
 
 async function assertEditAccess(

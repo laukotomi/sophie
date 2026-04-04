@@ -1,36 +1,12 @@
 import { Hono } from 'hono';
-import type { Session, User } from 'better-auth';
-import { auth } from '../auth.js';
 import { getDashboardData, editOrCreateNote, deleteNote } from '../queries.js';
+import { requireAuth, type AuthVariables } from '../middleware.js';
 
-type Variables = { user: User; session: Session };
+async function parseNoteForm(form: FormData) {
+    const text = form.get('text');
+    if (typeof text !== 'string' || !text.trim()) return null;
 
-const notes = new Hono<{ Variables: Variables }>();
-
-// Auth middleware — populates c.var.user for all routes in this router
-notes.use(async (c, next) => {
-    const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    if (!session) return c.json({ error: 'Unauthorized' }, 401);
-    c.set('user', session.user);
-    c.set('session', session.session);
-    await next();
-});
-
-notes.get('/', async (c) => {
-    const user = c.get('user');
-    const data = await getDashboardData(user.id);
-    return c.json({ user, ...data });
-});
-
-notes.post('/', async (c) => {
-    const user = c.get('user');
-    const form = await c.req.formData().catch(() => null);
-
-    const text = form?.get('text');
-    if (!form || typeof text !== 'string' || !text.trim()) {
-        return c.json({ error: 'text is required' }, 400);
-    }
-
+    const noteId = form.get('noteId');
     const collaborators = form.get('collaborators');
     const fixedPositionRaw = form.get('fixedPosition');
     const fixedPosition = fixedPositionRaw !== null && fixedPositionRaw !== ''
@@ -47,16 +23,36 @@ notes.post('/', async (c) => {
         stream: f.stream(),
     }));
 
+    return {
+        text,
+        noteId: typeof noteId === 'string' && noteId.trim() ? noteId : null,
+        collaborators: typeof collaborators === 'string' && collaborators ? collaborators : undefined,
+        fixedPosition: fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
+        color,
+        files: filesData.length > 0 ? filesData : undefined,
+    };
+}
+
+const notes = new Hono<{ Variables: AuthVariables }>();
+
+notes.use(requireAuth);
+
+notes.get('/', async (c) => {
+    const user = c.get('user');
+    const data = await getDashboardData(user.id);
+    return c.json({ user, ...data });
+});
+
+notes.post('/', async (c) => {
+    const user = c.get('user');
+    const form = await c.req.formData().catch(() => null);
+    if (!form) return c.json({ error: 'text is required' }, 400);
+
+    const parsed = await parseNoteForm(form);
+    if (!parsed) return c.json({ error: 'text is required' }, 400);
+
     try {
-        await editOrCreateNote(
-            user.id,
-            null,
-            text,
-            typeof collaborators === 'string' && collaborators ? collaborators : undefined,
-            fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
-            color,
-            filesData.length > 0 ? filesData : undefined,
-        );
+        await editOrCreateNote(user.id, null, parsed.text, parsed.collaborators, parsed.fixedPosition, parsed.color, parsed.files);
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Unknown error';
         return c.json({ error: message }, 500);
@@ -68,42 +64,18 @@ notes.post('/', async (c) => {
 notes.put('/', async (c) => {
     const user = c.get('user');
     const form = await c.req.formData().catch(() => null);
+    if (!form) return c.json({ error: 'noteId is required' }, 400);
 
-    const noteId = form?.get('noteId');
-    if (!form || typeof noteId !== 'string' || !noteId.trim()) {
+    const noteIdRaw = form.get('noteId');
+    if (typeof noteIdRaw !== 'string' || !noteIdRaw.trim()) {
         return c.json({ error: 'noteId is required' }, 400);
     }
-    const text = form.get('text');
-    if (typeof text !== 'string' || !text.trim()) {
-        return c.json({ error: 'text is required' }, 400);
-    }
 
-    const collaborators = form.get('collaborators');
-    const fixedPositionRaw = form.get('fixedPosition');
-    const fixedPosition = fixedPositionRaw !== null && fixedPositionRaw !== ''
-        ? parseInt(fixedPositionRaw as string, 10)
-        : undefined;
-    const colorRaw = form.get('color');
-    const color = typeof colorRaw === 'string' && colorRaw ? colorRaw : null;
-
-    const fileEntries = form.getAll('files').filter((f): f is File => f instanceof File);
-    const filesData = fileEntries.map((f) => ({
-        name: f.name,
-        type: f.type || 'application/octet-stream',
-        size: f.size,
-        stream: f.stream(),
-    }));
+    const parsed = await parseNoteForm(form);
+    if (!parsed) return c.json({ error: 'text is required' }, 400);
 
     try {
-        await editOrCreateNote(
-            user.id,
-            noteId,
-            text,
-            typeof collaborators === 'string' && collaborators ? collaborators : undefined,
-            fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
-            color,
-            filesData.length > 0 ? filesData : undefined,
-        );
+        await editOrCreateNote(user.id, noteIdRaw, parsed.text, parsed.collaborators, parsed.fixedPosition, parsed.color, parsed.files);
     } catch (e) {
         const message = e instanceof Error ? e.message : 'Unknown error';
         if (message === 'Note not found') return c.json({ error: message }, 404);

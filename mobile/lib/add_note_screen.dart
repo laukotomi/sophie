@@ -170,15 +170,15 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
   // Predefined palette. null = theme default.
   static const _palette = [
     null,
-    '#EF9A9A', // red
-    '#FFCC80', // orange
-    '#FFF59D', // yellow
-    '#A5D6A7', // green
-    '#80DEEA', // cyan
-    '#90CAF9', // blue
-    '#CE93D8', // purple
-    '#F48FB1', // pink
-    '#BCAAA4', // brown
+    '#B71C1C', // red
+    '#E65100', // orange
+    '#F9A825', // yellow
+    '#1B5E20', // green
+    '#006064', // cyan
+    '#0D47A1', // blue
+    '#4A148C', // purple
+    '#880E4F', // pink
+    '#4E342E', // brown
   ];
 
   Future<void> _openSettings() async {
