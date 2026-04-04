@@ -96,6 +96,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
   bool _saving = false;
   bool _deleting = false;
   int? _fixedPosition;
+  String? _color;
   String? _errorMessage;
 
   bool get _isEditing => widget.existingNote != null;
@@ -112,6 +113,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
       text: widget.existingNote?.text ?? '',
     );
     _fixedPosition = widget.existingNote?.position;
+    _color = widget.existingNote?.color;
     _existingFiles = List.of(widget.existingNote?.files ?? []);
     // Pre-populate collaborators from the existing note, matching against users
     _collaborators =
@@ -165,43 +167,43 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
     }
   }
 
+  // Predefined palette. null = theme default.
+  static const _palette = [
+    null,
+    '#EF9A9A', // red
+    '#FFCC80', // orange
+    '#FFF59D', // yellow
+    '#A5D6A7', // green
+    '#80DEEA', // cyan
+    '#90CAF9', // blue
+    '#CE93D8', // purple
+    '#F48FB1', // pink
+    '#BCAAA4', // brown
+  ];
+
   Future<void> _openSettings() async {
-    final controller = TextEditingController(
-      text: _fixedPosition?.toString() ?? '',
-    );
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Note settings'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Fixed position',
-            hintText: 'Leave empty for automatic',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final raw = controller.text.trim();
-              setState(() {
-                _fixedPosition = raw.isEmpty ? null : int.tryParse(raw);
-              });
-              Navigator.of(ctx).pop();
-            },
-            child: const Text('Apply'),
-          ),
-        ],
+      builder: (ctx) => _NoteSettingsDialog(
+        initialPosition: _fixedPosition,
+        initialColor: _color,
+        palette: _palette,
+        contrastColor: _contrastColor,
+        onApply: (position, color) {
+          setState(() {
+            _fixedPosition = position;
+            _color = color;
+          });
+        },
       ),
     );
-    controller.dispose();
+  }
+
+  /// Returns black or white depending on which contrasts better with [hex].
+  static Color _contrastColor(String hex) {
+    final c = Color(int.parse('FF${hex.substring(1)}', radix: 16));
+    final luminance = c.computeLuminance();
+    return luminance > 0.35 ? Colors.black87 : Colors.white;
   }
 
   Future<void> _openAddCollaborator() async {
@@ -267,6 +269,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
           _textController.text.trim(),
           collaborators: collabs,
           fixedPosition: _fixedPosition,
+          color: _color,
           files: fileArgs,
         );
       } else {
@@ -274,6 +277,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
           _textController.text.trim(),
           collaborators: collabs,
           fixedPosition: _fixedPosition,
+          color: _color,
           files: fileArgs,
         );
       }
@@ -523,5 +527,120 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
         ),
       ), // Scaffold
     ); // PopScope
+  }
+}
+
+class _NoteSettingsDialog extends StatefulWidget {
+  final int? initialPosition;
+  final String? initialColor;
+  final List<String?> palette;
+  final Color Function(String) contrastColor;
+  final void Function(int? position, String? color) onApply;
+
+  const _NoteSettingsDialog({
+    required this.initialPosition,
+    required this.initialColor,
+    required this.palette,
+    required this.contrastColor,
+    required this.onApply,
+  });
+
+  @override
+  State<_NoteSettingsDialog> createState() => _NoteSettingsDialogState();
+}
+
+class _NoteSettingsDialogState extends State<_NoteSettingsDialog> {
+  late final TextEditingController _controller;
+  late String? _selectedColor;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: widget.initialPosition?.toString() ?? '',
+    );
+    _selectedColor = widget.initialColor;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Note settings'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Fixed position',
+              hintText: 'Leave empty for automatic',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+          ),
+          const SizedBox(height: 16),
+          const Text('Background color'),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: widget.palette.map((hex) {
+              final isSelected = _selectedColor == hex;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedColor = hex),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: hex == null
+                        ? Theme.of(context).colorScheme.surfaceContainerLow
+                        : Color(int.parse('FF${hex.substring(1)}', radix: 16)),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.outline,
+                      width: isSelected ? 2.5 : 1,
+                    ),
+                  ),
+                  child: isSelected
+                      ? Icon(
+                          Icons.check,
+                          size: 18,
+                          color: hex == null
+                              ? Theme.of(context).colorScheme.onSurface
+                              : widget.contrastColor(hex),
+                        )
+                      : null,
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final raw = _controller.text.trim();
+            final position = raw.isEmpty ? null : int.tryParse(raw);
+            Navigator.of(context).pop();
+            widget.onApply(position, _selectedColor);
+          },
+          child: const Text('Apply'),
+        ),
+      ],
+    );
   }
 }

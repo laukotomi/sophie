@@ -36,6 +36,8 @@ notes.post('/', async (c) => {
     const fixedPosition = fixedPositionRaw !== null && fixedPositionRaw !== ''
         ? parseInt(fixedPositionRaw as string, 10)
         : undefined;
+    const colorRaw = form.get('color');
+    const color = typeof colorRaw === 'string' && colorRaw ? colorRaw : null;
 
     const fileEntries = form.getAll('files').filter((f): f is File => f instanceof File);
     const filesData = fileEntries.map((f) => ({
@@ -52,6 +54,7 @@ notes.post('/', async (c) => {
             text,
             typeof collaborators === 'string' && collaborators ? collaborators : undefined,
             fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
+            color,
             filesData.length > 0 ? filesData : undefined,
         );
     } catch (e) {
@@ -80,6 +83,8 @@ notes.put('/', async (c) => {
     const fixedPosition = fixedPositionRaw !== null && fixedPositionRaw !== ''
         ? parseInt(fixedPositionRaw as string, 10)
         : undefined;
+    const colorRaw = form.get('color');
+    const color = typeof colorRaw === 'string' && colorRaw ? colorRaw : null;
 
     const fileEntries = form.getAll('files').filter((f): f is File => f instanceof File);
     const filesData = fileEntries.map((f) => ({
@@ -96,6 +101,7 @@ notes.put('/', async (c) => {
             text,
             typeof collaborators === 'string' && collaborators ? collaborators : undefined,
             fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
+            color,
             filesData.length > 0 ? filesData : undefined,
         );
     } catch (e) {

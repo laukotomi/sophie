@@ -7,6 +7,7 @@ export const noteRight = pgEnum('note_right', ['view', 'edit']);
 export const note = pgTable('note', {
     id: text('id').primaryKey().default(sql`gen_random_uuid()`),
     text: text('text').notNull(),
+    color: text('color'),
     owner: text('owner')
         .notNull()
         .references(() => user.id, { onDelete: 'cascade' }),

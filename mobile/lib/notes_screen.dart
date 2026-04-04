@@ -347,11 +347,11 @@ class _NoteCardState extends State<_NoteCard> {
     // from card top) has scrolled behind the AppBar, but the card is still visible.
     final shouldFloat = cardTop < viewTop && cardBottom > viewTop + 56 + 75;
 
-    debugPrint(
-      '[NoteCard] cardTop=$cardTop cardBottom=$cardBottom '
-      'viewTop=$viewTop buttonBottom=${cardTop + 56} '
-      'shouldFloat=$shouldFloat isShowing=${_overlayController.isShowing}',
-    );
+    // debugPrint(
+    //   '[NoteCard] cardTop=$cardTop cardBottom=$cardBottom '
+    //   'viewTop=$viewTop buttonBottom=${cardTop + 56} '
+    //   'shouldFloat=$shouldFloat isShowing=${_overlayController.isShowing}',
+    // );
 
     if (shouldFloat && !_overlayController.isShowing) {
       _overlayTop = viewTop + 4;
@@ -400,6 +400,11 @@ class _NoteCardState extends State<_NoteCard> {
       ),
       child: Card(
         key: _cardKey,
+        color: widget.note.color != null
+            ? Color(
+                int.parse('FF${widget.note.color!.substring(1)}', radix: 16),
+              )
+            : null,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

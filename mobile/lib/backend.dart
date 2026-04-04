@@ -42,6 +42,7 @@ class BackendClient {
     required String text,
     required List<({String userId, String right})> collaborators,
     int? fixedPosition,
+    String? color,
     required List<({String path, String name})> files,
   }) async {
     final request =
@@ -58,6 +59,9 @@ class BackendClient {
     }
     if (fixedPosition != null) {
       request.fields['fixedPosition'] = fixedPosition.toString();
+    }
+    if (color != null) {
+      request.fields['color'] = color;
     }
     for (final file in files) {
       request.files.add(
@@ -109,6 +113,7 @@ class BackendClient {
     String text, {
     List<({String userId, String right})> collaborators = const [],
     int? fixedPosition,
+    String? color,
     List<({String path, String name})> files = const [],
   }) async {
     final request = await _buildNoteRequest(
@@ -116,6 +121,7 @@ class BackendClient {
       text: text,
       collaborators: collaborators,
       fixedPosition: fixedPosition,
+      color: color,
       files: files,
     );
     final response = await http.Response.fromStream(
@@ -133,6 +139,7 @@ class BackendClient {
     String text, {
     List<({String userId, String right})> collaborators = const [],
     int? fixedPosition,
+    String? color,
     List<({String path, String name})> files = const [],
   }) async {
     final request = await _buildNoteRequest(
@@ -141,6 +148,7 @@ class BackendClient {
       text: text,
       collaborators: collaborators,
       fixedPosition: fixedPosition,
+      color: color,
       files: files,
     );
     final response = await http.Response.fromStream(

@@ -77,6 +77,7 @@ class NoteCollaborator {
 class Note {
   final String id;
   final String text;
+  final String? color;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String right;
@@ -89,6 +90,7 @@ class Note {
   const Note({
     required this.id,
     required this.text,
+    this.color,
     required this.createdAt,
     required this.updatedAt,
     required this.right,
@@ -102,6 +104,7 @@ class Note {
   factory Note.fromJson(Map<String, dynamic> json) => Note(
     id: json['id'] as String,
     text: json['text'] as String,
+    color: json['color'] as String?,
     createdAt: DateTime.parse(json['createdAt'] as String),
     updatedAt: DateTime.parse(json['updatedAt'] as String),
     right: json['right'] as String,
@@ -119,6 +122,7 @@ class Note {
   Map<String, dynamic> toJson() => {
     'id': id,
     'text': text,
+    'color': color,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     'right': right,

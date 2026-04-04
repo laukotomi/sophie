@@ -21,6 +21,7 @@ export async function getDashboardData(userId: string) {
             .select({
                 id: note.id,
                 text: note.text,
+                color: note.color,
                 createdAt: note.createdAt,
                 updatedAt: note.updatedAt,
                 ownerId: note.owner,
@@ -32,6 +33,7 @@ export async function getDashboardData(userId: string) {
             .select({
                 id: note.id,
                 text: note.text,
+                color: note.color,
                 createdAt: note.createdAt,
                 updatedAt: note.updatedAt,
                 ownerId: note.owner,
@@ -98,6 +100,7 @@ export async function getDashboardData(userId: string) {
         .map((n) => ({
             ...n,
             position: positionByNoteId.get(n.id) ?? null,
+            color: n.color ?? null,
             collaborators: (collaboratorsByNoteId.get(n.id) ?? []).map((c) => ({
                 id: c.userId,
                 name: c.userName,
@@ -121,6 +124,7 @@ export async function editOrCreateNote(
     text: string,
     collaboratorsJson?: string,
     fixedPosition?: number,
+    color?: string | null,
     files?: { name: string; type: string; size: number; stream: ReadableStream<Uint8Array> }[],
 ) {
     const isEdit = typeof noteId === 'string' && noteId.length > 0;
@@ -140,7 +144,7 @@ export async function editOrCreateNote(
 
             await tx
                 .update(note)
-                .set({ text: text.trim() })
+                .set({ text: text.trim(), color: color ?? null })
                 .where(eq(note.id, noteId as string));
 
             targetNoteId = noteId as string;
@@ -149,7 +153,7 @@ export async function editOrCreateNote(
         } else {
             const [newNote] = await tx
                 .insert(note)
-                .values({ text: text.trim(), owner: userId })
+                .values({ text: text.trim(), color: color ?? null, owner: userId })
                 .returning({ id: note.id });
             targetNoteId = newNote.id;
         }
