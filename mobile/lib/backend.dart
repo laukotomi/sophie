@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'models.dart';
 
@@ -10,15 +10,19 @@ class UnauthorizedException implements Exception {
 }
 
 class BackendClient {
-  static const _timeout = Duration(seconds: 5);
-  static const _uploadTimeout = Duration(seconds: 30);
+  static const _timeout = Duration(seconds: 10);
+  static const _uploadTimeout = Duration(seconds: 60);
 
   final String baseUrl;
   final void Function()? onUnauthorized;
   String? _token;
 
+  final _httpClient = http.Client();
+
   BackendClient({required this.baseUrl, String? token, this.onUnauthorized})
     : _token = token;
+
+  void close() => _httpClient.close();
 
   Map<String, String> get _headers => {
     if (_token != null) 'Authorization': 'Bearer $_token',
@@ -163,24 +167,27 @@ class BackendClient {
     }
   }
 
-  Future<Uint8List> downloadFile(String fileId) async {
-    final response = await http
-        .get(
-          Uri.parse(
-            '$baseUrl/api/files?id=${Uri.encodeQueryComponent(fileId)}',
-          ),
-          headers: _authHeaders,
-        )
-        .timeout(_uploadTimeout);
+  Future<void> downloadFileTo(String fileId, String destPath) async {
+    final request = http.Request(
+      'GET',
+      Uri.parse('$baseUrl/api/files?id=${Uri.encodeQueryComponent(fileId)}'),
+    )..headers.addAll(_authHeaders);
 
-    _checkUnauthorized(response.statusCode);
-    if (response.statusCode == 403) throw Exception('Forbidden');
-    if (response.statusCode == 404) throw Exception('File not found');
-    if (response.statusCode != 200) {
-      throw Exception('Failed to download file: ${response.statusCode}');
+    final streamed = await _httpClient.send(request).timeout(_uploadTimeout);
+
+    _checkUnauthorized(streamed.statusCode);
+    if (streamed.statusCode == 403) throw Exception('Forbidden');
+    if (streamed.statusCode == 404) throw Exception('File not found');
+    if (streamed.statusCode != 200) {
+      throw Exception('Failed to download file: ${streamed.statusCode}');
     }
 
-    return response.bodyBytes;
+    final sink = File(destPath).openWrite();
+    try {
+      await streamed.stream.pipe(sink);
+    } finally {
+      await sink.close();
+    }
   }
 
   Future<void> deleteFile(String fileId) async {

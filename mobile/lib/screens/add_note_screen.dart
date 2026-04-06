@@ -1,71 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'backend.dart';
-import 'add_collaborator_screen.dart';
-
-// Matches numbered list prefixes: "1. ", "12. ", etc. — captures the number separately.
-final _numberedPattern = RegExp(r'^(\s*)(\d+)(\.)\s+');
-// Matches bullet/blockquote prefixes: "- ", "* ", "> "
-final _bulletPattern = RegExp(r'^(\s*(?:[-*>])\s+)');
-
-String? _nextPrefix(String line) {
-  final numMatch = _numberedPattern.firstMatch(line);
-  if (numMatch != null) {
-    final indent = numMatch.group(1)!;
-    final n = int.parse(numMatch.group(2)!);
-    final dot = numMatch.group(3)!;
-    return '$indent${n + 1}$dot ';
-  }
-  final bulletMatch = _bulletPattern.firstMatch(line);
-  if (bulletMatch != null) return bulletMatch.group(1)!;
-  return null;
-}
-
-class _MarkdownTextController extends TextEditingController {
-  _MarkdownTextController({super.text});
-
-  @override
-  set value(TextEditingValue newValue) {
-    final old = this.value;
-    // Detect a newline being inserted
-    if (newValue.text.length == old.text.length + 1 &&
-        newValue.text[newValue.selection.baseOffset - 1] == '\n') {
-      final cursor = newValue.selection.baseOffset;
-      final textBefore = newValue.text.substring(0, cursor);
-      final lineStart = textBefore.lastIndexOf('\n', cursor - 2) + 1;
-      final prevLine = textBefore.substring(lineStart, cursor - 1);
-      final prefix = _nextPrefix(prevLine);
-      if (prefix != null) {
-        // If the previous line had only the prefix (empty item), remove it instead
-        final matchLen =
-            (_numberedPattern.firstMatch(prevLine) ??
-                    _bulletPattern.firstMatch(prevLine))!
-                .group(0)!
-                .length;
-        final isEmpty = prevLine.length == matchLen;
-        if (isEmpty) {
-          final cleaned =
-              old.text.substring(0, lineStart) + old.text.substring(cursor - 1);
-          super.value = TextEditingValue(
-            text: cleaned,
-            selection: TextSelection.collapsed(offset: lineStart),
-          );
-          return;
-        }
-        final inserted =
-            newValue.text.substring(0, cursor) +
-            prefix +
-            newValue.text.substring(cursor);
-        super.value = TextEditingValue(
-          text: inserted,
-          selection: TextSelection.collapsed(offset: cursor + prefix.length),
-        );
-        return;
-      }
-    }
-    super.value = newValue;
-  }
-}
+import 'package:sophie/backend.dart';
+import 'package:sophie/screens/add_collaborator_screen.dart';
+import 'package:sophie/services/markdown_text_controller.dart';
+import 'package:sophie/widgets/note_settings_dialog.dart';
 
 class AddNoteScreen extends StatefulWidget {
   final BackendClient client;
@@ -109,7 +47,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
   @override
   void initState() {
     super.initState();
-    _textController = _MarkdownTextController(
+    _textController = MarkdownTextController(
       text: widget.existingNote?.text ?? '',
     );
     _fixedPosition = widget.existingNote?.position;
@@ -154,7 +92,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -184,7 +122,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
   Future<void> _openSettings() async {
     await showDialog<void>(
       context: context,
-      builder: (ctx) => _NoteSettingsDialog(
+      builder: (ctx) => NoteSettingsDialog(
         initialPosition: _fixedPosition,
         initialColor: _color,
         palette: _palette,
@@ -362,7 +300,7 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
                           await widget.client.deleteNote(
                             widget.existingNote!.id,
                           );
-                          if (mounted) Navigator.of(context).pop(true);
+                          if (context.mounted) Navigator.of(context).pop(true);
                         } on UnauthorizedException {
                           // handled by onUnauthorized
                         } catch (_) {
@@ -527,120 +465,5 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
         ),
       ), // Scaffold
     ); // PopScope
-  }
-}
-
-class _NoteSettingsDialog extends StatefulWidget {
-  final int? initialPosition;
-  final String? initialColor;
-  final List<String?> palette;
-  final Color Function(String) contrastColor;
-  final void Function(int? position, String? color) onApply;
-
-  const _NoteSettingsDialog({
-    required this.initialPosition,
-    required this.initialColor,
-    required this.palette,
-    required this.contrastColor,
-    required this.onApply,
-  });
-
-  @override
-  State<_NoteSettingsDialog> createState() => _NoteSettingsDialogState();
-}
-
-class _NoteSettingsDialogState extends State<_NoteSettingsDialog> {
-  late final TextEditingController _controller;
-  late String? _selectedColor;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(
-      text: widget.initialPosition?.toString() ?? '',
-    );
-    _selectedColor = widget.initialColor;
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Note settings'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            controller: _controller,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Fixed position',
-              hintText: 'Leave empty for automatic',
-              border: OutlineInputBorder(),
-            ),
-            autofocus: true,
-          ),
-          const SizedBox(height: 16),
-          const Text('Background color'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: widget.palette.map((hex) {
-              final isSelected = _selectedColor == hex;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedColor = hex),
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: hex == null
-                        ? Theme.of(context).colorScheme.surfaceContainerLow
-                        : Color(int.parse('FF${hex.substring(1)}', radix: 16)),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: isSelected
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.outline,
-                      width: isSelected ? 2.5 : 1,
-                    ),
-                  ),
-                  child: isSelected
-                      ? Icon(
-                          Icons.check,
-                          size: 18,
-                          color: hex == null
-                              ? Theme.of(context).colorScheme.onSurface
-                              : widget.contrastColor(hex),
-                        )
-                      : null,
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final raw = _controller.text.trim();
-            final position = raw.isEmpty ? null : int.tryParse(raw);
-            Navigator.of(context).pop();
-            widget.onApply(position, _selectedColor);
-          },
-          child: const Text('Apply'),
-        ),
-      ],
-    );
   }
 }

@@ -11,10 +11,12 @@ dependencies:
     sdk: flutter
   file_picker: ^10.3.10
   flutter_launcher_icons: ^0.14.4
+  flutter_local_notifications: ^21.0.0
   flutter_markdown_plus: ^1.0.7
   http: ^1.6.0
-  open_filex: ^4.7.0
+  path_provider: ^2.1.5
   shared_preferences: ^2.5.5
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

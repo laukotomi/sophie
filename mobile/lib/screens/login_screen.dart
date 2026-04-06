@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'backend.dart';
+import 'package:sophie/backend.dart';
+import 'package:sophie/storage.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? initialServerUrl;
@@ -58,11 +58,8 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordController.text,
       );
 
-      final prefs = await SharedPreferences.getInstance();
-      await Future.wait([
-        prefs.setString('auth_token', token),
-        prefs.setString('server_url', serverUrl),
-      ]);
+      await Storage.setAuthToken(token);
+      await Storage.setServerUrl(serverUrl);
 
       widget.onLoggedIn(token, serverUrl);
     } on UnauthorizedException {
@@ -98,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _serverUrlController,
                     decoration: const InputDecoration(
                       labelText: 'Server URL',
-                      hintText: 'http://192.168.1.x:5173',
+                      hintText: 'http://192.168.x.y:3000',
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.url,

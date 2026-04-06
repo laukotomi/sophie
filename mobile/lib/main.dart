@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'backend.dart';
-import 'login_screen.dart';
-import 'notes_screen.dart';
+import 'package:sophie/backend.dart';
+import 'package:sophie/screens/login_screen.dart';
+import 'package:sophie/screens/notes_screen.dart';
+import 'package:sophie/services/download_notifications.dart';
+import 'package:sophie/storage.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
-  final storedToken = prefs.getString('auth_token');
-  final storedServerUrl = prefs.getString('server_url');
-  runApp(MainApp(initialToken: storedToken, initialServerUrl: storedServerUrl));
+  await Storage.init();
+  await DownloadNotifications.init();
+  runApp(
+    MainApp(
+      initialToken: Storage.authToken,
+      initialServerUrl: Storage.serverUrl,
+    ),
+  );
 }
 
 class MainApp extends StatefulWidget {
@@ -51,8 +56,7 @@ class _MainAppState extends State<MainApp> {
   }
 
   Future<void> _onLoggedOut() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
+    await Storage.clear();
     setState(() {
       _token = null;
       _client = null;

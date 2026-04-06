@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
-
 class AppUser {
   final String id;
   final String name;
@@ -20,29 +17,13 @@ class AppUser {
 class NoteFile {
   final String id;
   final String fileName;
-  final int fileSize;
-  final DateTime createdAt;
 
-  const NoteFile({
-    required this.id,
-    required this.fileName,
-    required this.fileSize,
-    required this.createdAt,
-  });
+  const NoteFile({required this.id, required this.fileName});
 
-  factory NoteFile.fromJson(Map<String, dynamic> json) => NoteFile(
-    id: json['id'] as String,
-    fileName: json['fileName'] as String,
-    fileSize: json['fileSize'] as int,
-    createdAt: DateTime.parse(json['createdAt'] as String),
-  );
+  factory NoteFile.fromJson(Map<String, dynamic> json) =>
+      NoteFile(id: json['id'] as String, fileName: json['fileName'] as String);
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'fileName': fileName,
-    'fileSize': fileSize,
-    'createdAt': createdAt.toIso8601String(),
-  };
+  Map<String, dynamic> toJson() => {'id': id, 'fileName': fileName};
 }
 
 class NoteCollaborator {
@@ -160,24 +141,4 @@ class DashboardData {
     'users': users.map((u) => u.toJson()).toList(),
     'notes': notes.map((n) => n.toJson()).toList(),
   };
-}
-
-class DashboardCache {
-  static const _key = 'cached_dashboard';
-
-  static Future<void> save(DashboardData data) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, jsonEncode(data.toJson()));
-  }
-
-  static Future<DashboardData?> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
-    if (raw == null) return null;
-    try {
-      return DashboardData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
-    }
-  }
 }
