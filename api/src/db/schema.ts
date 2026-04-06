@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, serial, integer, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, serial, integer, text, timestamp, time, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { user } from './auth.schema.js';
 
@@ -58,6 +58,43 @@ export const noteFiles = pgTable('note_files', {
     fileType: text('file_type').notNull(),
     fileSize: integer('file_size').notNull(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const task = pgTable('task', {
+    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    owner: text('owner')
+        .notNull()
+        .references(() => user.id, { onDelete: 'cascade' }),
+    text: text('text').notNull(),
+    rrule: text('rrule'),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const taskCollaborator = pgTable('task_collaborator', {
+    id: serial('id').primaryKey(),
+    userId: text('user_id')
+        .notNull()
+        .references(() => user.id, { onDelete: 'cascade' }),
+    taskId: text('task_id')
+        .notNull()
+        .references(() => task.id, { onDelete: 'cascade' }),
+}, (t) => [
+    uniqueIndex('task_collaborator_user_id_task_id_idx').on(t.userId, t.taskId),
+]);
+
+// An alert can be either:
+//   alertAt   — fire at an absolute date+time
+//   timeBefore — fire X hours and Y minutes before the task's dueAt (stored as HH:MM:SS)
+// Exactly one of the two should be set.
+export const taskAlert = pgTable('task_alert', {
+    id: serial('id').primaryKey(),
+    taskId: text('task_id')
+        .notNull()
+        .references(() => task.id, { onDelete: 'cascade' }),
+    alertAt: timestamp('alert_at', { withTimezone: true }),
+    timeBefore: time('time_before'),
 });
 
 export * from './auth.schema.js';

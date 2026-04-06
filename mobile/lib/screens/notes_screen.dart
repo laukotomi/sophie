@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:sophie/backend.dart';
 import 'package:sophie/screens/add_note_screen.dart';
-import 'package:sophie/storage.dart';
 import 'package:sophie/widgets/note_card.dart';
 
 class NotesScreen extends StatefulWidget {
   final BackendClient client;
   final VoidCallback onLoggedOut;
+  final DashboardData data;
+  final bool usingCache;
+  final VoidCallback onRefresh;
 
   const NotesScreen({
     super.key,
     required this.client,
     required this.onLoggedOut,
+    required this.data,
+    required this.usingCache,
+    required this.onRefresh,
   });
 
   @override
@@ -22,8 +27,6 @@ class _NotesScreenState extends State<NotesScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
 
-  late Future<DashboardData> _dataFuture;
-  bool _usingCache = false;
   String? _selectedTag;
 
   // Matches #tag (word chars directly after #, no space — distinguishes from markdown headings)
@@ -40,53 +43,21 @@ class _NotesScreenState extends State<NotesScreen> {
         .toList();
   }
 
-  Future<DashboardData> _loadData() async {
-    try {
-      final data = await widget.client.getDashboardData();
-      await Storage.saveDashboardData(data);
-      if (mounted) setState(() => _usingCache = false);
-      return data;
-    } catch (error) {
-      final cached = Storage.getDashboardData();
-      if (cached != null) {
-        if (mounted) setState(() => _usingCache = true);
-        return cached;
-      }
-      rethrow;
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _dataFuture = _loadData();
-  }
-
   @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
   }
 
-  void _refresh() {
-    setState(() {
-      _usingCache = false;
-      _dataFuture = _loadData();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      drawer: FutureBuilder<DashboardData>(
-        future: _dataFuture,
-        builder: (context, snapshot) {
+      drawer: Builder(
+        builder: (context) {
           final allTags = <String>{};
-          if (snapshot.hasData) {
-            for (final note in snapshot.data!.notes) {
-              allTags.addAll(_extractTags(note.text));
-            }
+          for (final note in widget.data.notes) {
+            allTags.addAll(_extractTags(note.text));
           }
           final sorted = allTags.toList()..sort();
           return Drawer(
@@ -157,7 +128,7 @@ class _NotesScreenState extends State<NotesScreen> {
           ],
         ),
         actions: [
-          if (_usingCache)
+          if (widget.usingCache)
             Tooltip(
               message: 'Showing cached data — could not reach server',
               child: const Padding(
@@ -192,54 +163,24 @@ class _NotesScreenState extends State<NotesScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'fab_notes',
         onPressed: () async {
-          final DashboardData? data = await _dataFuture.then<DashboardData?>(
-            (d) => d,
-            onError: (_) => null,
-          );
-          if (!context.mounted) return;
           final created = await Navigator.of(context).push<bool>(
             MaterialPageRoute(
               builder: (_) => AddNoteScreen(
                 client: widget.client,
-                users: data?.users ?? const [],
+                users: widget.data.users,
               ),
             ),
           );
-          if (created == true) _refresh();
+          if (created == true) widget.onRefresh();
         },
         tooltip: 'Add note',
         child: const Icon(Icons.add),
       ),
-      body: FutureBuilder<DashboardData>(
-        future: _dataFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Failed to load notes.',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  FilledButton.tonal(
-                    onPressed: _refresh,
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final notes = snapshot.data!.notes;
+      body: Builder(
+        builder: (context) {
+          final notes = widget.data.notes;
           final filtered = _selectedTag == null
               ? notes
               : notes
@@ -247,18 +188,30 @@ class _NotesScreenState extends State<NotesScreen> {
                     .toList();
 
           if (filtered.isEmpty) {
-            return Center(
-              child: Text(
-                _selectedTag != null
-                    ? 'No notes tagged #$_selectedTag.'
-                    : 'No notes yet.',
+            return RefreshIndicator(
+              onRefresh: () async => widget.onRefresh(),
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.6,
+                    child: Center(
+                      child: Text(
+                        _selectedTag != null
+                            ? 'No notes tagged #$_selectedTag.'
+                            : 'No notes yet.',
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           }
 
           return RefreshIndicator(
-            onRefresh: () async => _refresh(),
+            onRefresh: () async => widget.onRefresh(),
             child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
               controller: _scrollController,
               padding: const EdgeInsets.all(12),
               itemCount: filtered.length,
@@ -267,9 +220,9 @@ class _NotesScreenState extends State<NotesScreen> {
                 final note = filtered[index];
                 return NoteCard(
                   note: note,
-                  users: snapshot.data!.users,
+                  users: widget.data.users,
                   client: widget.client,
-                  onEdited: _refresh,
+                  onEdited: widget.onRefresh,
                   scrollController: _scrollController,
                 );
               },

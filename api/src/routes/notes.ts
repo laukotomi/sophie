@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getDashboardData, editOrCreateNote, deleteNote } from '../queries.js';
+import { editOrCreateNote, deleteNote } from '../note_queries.js';
 import { requireAuth, type AuthVariables } from '../middleware.js';
 
 async function parseNoteForm(form: FormData) {
@@ -36,12 +36,6 @@ async function parseNoteForm(form: FormData) {
 const notes = new Hono<{ Variables: AuthVariables }>();
 
 notes.use(requireAuth);
-
-notes.get('/', async (c) => {
-    const user = c.get('user');
-    const data = await getDashboardData(user.id);
-    return c.json({ user, ...data });
-});
 
 notes.post('/', async (c) => {
     const user = c.get('user');

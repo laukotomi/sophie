@@ -100,7 +100,7 @@ class BackendClient {
 
   Future<DashboardData> getDashboardData() async {
     final response = await http
-        .get(Uri.parse('$baseUrl/api/notes'), headers: _headers)
+        .get(Uri.parse('$baseUrl/api/dashboard'), headers: _headers)
         .timeout(_timeout);
 
     _checkUnauthorized(response.statusCode);
@@ -222,6 +222,50 @@ class BackendClient {
     if (response.statusCode == 404) throw Exception('Note not found');
     if (response.statusCode != 204) {
       throw Exception('Failed to delete note: ${response.statusCode}');
+    }
+  }
+
+  Future<void> createTask({
+    required String text,
+    String? rrule,
+    DateTime? dueAt,
+    List<String> collaboratorIds = const [],
+    List<({DateTime? alertAt, Duration? timeBefore})> alerts = const [],
+  }) async {
+    String _pad(int n) => n.toString().padLeft(2, '0');
+    String _durationToTime(Duration d) =>
+        '${_pad(d.inHours)}:${_pad(d.inMinutes.remainder(60))}:00';
+
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/api/tasks'),
+          headers: _headers,
+          body: jsonEncode({
+            'text': text,
+            if (rrule != null && rrule.isNotEmpty) 'rrule': rrule,
+            if (dueAt != null) 'dueAt': dueAt.toUtc().toIso8601String(),
+            if (collaboratorIds.isNotEmpty) 'collaboratorIds': collaboratorIds,
+            if (alerts.isNotEmpty)
+              'alerts': alerts
+                  .map(
+                    (a) => a.alertAt != null
+                        ? {
+                            'type': 'absolute',
+                            'alertAt': a.alertAt!.toUtc().toIso8601String(),
+                          }
+                        : {
+                            'type': 'relative',
+                            'timeBefore': _durationToTime(a.timeBefore!),
+                          },
+                  )
+                  .toList(),
+          }),
+        )
+        .timeout(_timeout);
+
+    _checkUnauthorized(response.statusCode);
+    if (response.statusCode != 201) {
+      throw Exception('Failed to create task: ${response.statusCode}');
     }
   }
 }

@@ -1,12 +1,19 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 import 'package:sophie/backend.dart';
+import 'package:sophie/screens/home_screen.dart';
 import 'package:sophie/screens/login_screen.dart';
-import 'package:sophie/screens/notes_screen.dart';
 import 'package:sophie/services/download_notifications.dart';
 import 'package:sophie/storage.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final locale = Platform.localeName; // e.g. 'hu_HU'
+  Intl.defaultLocale = locale;
+  await initializeDateFormatting(locale);
   await Storage.init();
   await DownloadNotifications.init();
   runApp(
@@ -67,13 +74,19 @@ class _MainAppState extends State<MainApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: ThemeData.dark(useMaterial3: true),
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [
+        Locale('en'),
+        Locale('hu'),
+      ],
+      locale: Locale(Platform.localeName.split('_').first),
       builder: (context, child) => SafeArea(child: child!),
       home: _token == null
           ? LoginScreen(
               initialServerUrl: widget.initialServerUrl,
               onLoggedIn: _onLoggedIn,
             )
-          : NotesScreen(client: _client!, onLoggedOut: _onLoggedOut),
+          : HomeScreen(client: _client!, onLoggedOut: _onLoggedOut),
     );
   }
 }
