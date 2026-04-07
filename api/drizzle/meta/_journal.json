@@ -43,6 +43,13 @@
       "when": 1775490126742,
       "tag": "0005_naive_pretty_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775555350828,
+      "tag": "0006_supreme_blazing_skull",
+      "breakpoints": true
     }
   ]
 }

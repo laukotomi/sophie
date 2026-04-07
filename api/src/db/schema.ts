@@ -11,8 +11,8 @@ export const note = pgTable('note', {
     owner: text('owner')
         .notNull()
         .references(() => user.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export const collaborator = pgTable('collaborator', {
@@ -34,7 +34,7 @@ export const noteHistory = pgTable('note_history', {
         .notNull()
         .references(() => note.id, { onDelete: 'cascade' }),
     text: text('text').notNull(),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const noteOrder = pgTable('note_order', {
@@ -57,7 +57,7 @@ export const noteFiles = pgTable('note_files', {
     fileName: text('file_name').notNull(),
     fileType: text('file_type').notNull(),
     fileSize: integer('file_size').notNull(),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const task = pgTable('task', {
@@ -67,9 +67,10 @@ export const task = pgTable('task', {
         .references(() => user.id, { onDelete: 'cascade' }),
     text: text('text').notNull(),
     rrule: text('rrule'),
+    color: text('color'),
     dueAt: timestamp('due_at', { withTimezone: true }),
     doneAt: timestamp('done_at', { withTimezone: true }),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const taskCollaborator = pgTable('task_collaborator', {

@@ -48,6 +48,7 @@ notes.post('/', async (c) => {
     try {
         await editOrCreateNote(user.id, null, parsed.text, parsed.collaborators, parsed.fixedPosition, parsed.color, parsed.files);
     } catch (e) {
+        console.error('[POST /api/notes] editOrCreateNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
         return c.json({ error: message }, 500);
     }
@@ -71,6 +72,7 @@ notes.put('/', async (c) => {
     try {
         await editOrCreateNote(user.id, noteIdRaw, parsed.text, parsed.collaborators, parsed.fixedPosition, parsed.color, parsed.files);
     } catch (e) {
+        console.error('[PUT /api/notes] editOrCreateNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
         if (message === 'Note not found') return c.json({ error: message }, 404);
         if (message === 'Forbidden') return c.json({ error: message }, 403);
@@ -91,6 +93,7 @@ notes.delete('/', async (c) => {
     try {
         await deleteNote(user.id, body.noteId);
     } catch (e) {
+        console.error('[DELETE /api/notes] deleteNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
         if (message === 'Note not found') return c.json({ error: message }, 404);
         if (message === 'Forbidden') return c.json({ error: message }, 403);

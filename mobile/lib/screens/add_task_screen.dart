@@ -17,12 +17,15 @@ class AddTaskScreen extends StatefulWidget {
   final List<AppUser> users;
   final String currentUserId;
   final BackendClient client;
+  // When non-null the screen is in edit mode
+  final Task? existingTask;
 
   const AddTaskScreen({
     super.key,
     required this.users,
     required this.currentUserId,
     required this.client,
+    this.existingTask,
   });
 
   @override
@@ -31,12 +34,61 @@ class AddTaskScreen extends StatefulWidget {
 
 class _AddTaskScreenState extends State<AddTaskScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _textController = TextEditingController();
+  late final TextEditingController _textController;
   bool _saving = false;
-  DateTime? _dueAt;
-  String _rrule = '';
-  final List<_Alert> _alerts = [];
-  final List<AppUser> _collaborators = [];
+  bool _deleting = false;
+  late DateTime? _dueAt;
+  late String _rrule;
+  late final List<_Alert> _alerts;
+  late final List<AppUser> _collaborators;
+
+  bool get _isEditing => widget.existingTask != null;
+
+  bool get _hasChanges {
+    final t = widget.existingTask;
+    if (t == null) {
+      return _textController.text.trim().isNotEmpty ||
+          _dueAt != null ||
+          _rrule.isNotEmpty ||
+          _alerts.isNotEmpty ||
+          _collaborators.isNotEmpty;
+    }
+    final originalCollabIds = t.collaborators.map((c) => c.id).toSet();
+    final currentCollabIds = _collaborators.map((u) => u.id).toSet();
+    return _textController.text.trim() != t.text.trim() ||
+        _dueAt != t.dueAt ||
+        _rrule != (t.rrule ?? '') ||
+        originalCollabIds.length != currentCollabIds.length ||
+        !originalCollabIds.containsAll(currentCollabIds) ||
+        _alerts.length != t.alerts.length;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.existingTask;
+    _textController = TextEditingController(text: t?.text ?? '');
+    _dueAt = t?.dueAt;
+    _rrule = t?.rrule ?? '';
+    // Pre-populate alerts from existing task
+    _alerts = t == null
+        ? []
+        : t.alerts.map((a) {
+            if (a.alertAt != null) return _Alert.absolute(a.alertAt!);
+            // Parse 'HH:MM:SS' timeBefore into a Duration
+            final parts = (a.timeBefore ?? '0:0:0').split(':');
+            final h = int.tryParse(parts[0]) ?? 0;
+            final m = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
+            return _Alert.relative(Duration(hours: h, minutes: m));
+          }).toList();
+    // Pre-populate collaborators from existing task
+    _collaborators = t == null
+        ? []
+        : t.collaborators
+              .map((c) => widget.users.where((u) => u.id == c.id).firstOrNull)
+              .whereType<AppUser>()
+              .toList();
+  }
 
   @override
   void dispose() {
@@ -113,15 +165,28 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      await widget.client.createTask(
-        text: _textController.text.trim(),
-        rrule: _rrule.isNotEmpty ? _rrule : null,
-        dueAt: _dueAt,
-        collaboratorIds: _collaborators.map((u) => u.id).toList(),
-        alerts: _alerts
-            .map((a) => (alertAt: a.alertAt, timeBefore: a.timeBefore))
-            .toList(),
-      );
+      if (_isEditing) {
+        await widget.client.updateTask(
+          taskId: widget.existingTask!.id,
+          text: _textController.text.trim(),
+          rrule: _rrule.isNotEmpty ? _rrule : null,
+          dueAt: _dueAt,
+          collaboratorIds: _collaborators.map((u) => u.id).toList(),
+          alerts: _alerts
+              .map((a) => (alertAt: a.alertAt, timeBefore: a.timeBefore))
+              .toList(),
+        );
+      } else {
+        await widget.client.createTask(
+          text: _textController.text.trim(),
+          rrule: _rrule.isNotEmpty ? _rrule : null,
+          dueAt: _dueAt,
+          collaboratorIds: _collaborators.map((u) => u.id).toList(),
+          alerts: _alerts
+              .map((a) => (alertAt: a.alertAt, timeBefore: a.timeBefore))
+              .toList(),
+        );
+      }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -155,182 +220,266 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        forceMaterialTransparency: true,
-        title: const Text('New Task'),
-        actions: [
-          TextButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Save'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (!_hasChanges) {
+          Navigator.of(context).pop();
+          return;
+        }
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Discard changes?'),
+            content: const Text('Your changes will be lost.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Keep editing'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Discard'),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            TextFormField(
-              controller: _textController,
-              autofocus: true,
-              minLines: 3,
-              maxLines: null,
-              decoration: const InputDecoration(
-                labelText: 'Task',
-                hintText: 'What needs to be done?',
-                border: OutlineInputBorder(),
+        );
+        if (confirmed == true && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          forceMaterialTransparency: true,
+          title: Text(_isEditing ? 'Edit Task' : 'New Task'),
+          actions: [
+            if (_isEditing)
+              IconButton(
+                icon: _deleting
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.delete_outline),
+                tooltip: 'Delete task',
+                onPressed: (_saving || _deleting)
+                    ? null
+                    : () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Delete task'),
+                            content: const Text(
+                              'This cannot be undone. Are you sure?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true || !mounted) return;
+                        setState(() => _deleting = true);
+                        try {
+                          await widget.client.deleteTask(
+                            taskId: widget.existingTask!.id,
+                          );
+                          if (context.mounted) Navigator.of(context).pop(true);
+                        } catch (e) {
+                          if (mounted) {
+                            setState(() => _deleting = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to delete task: $e'),
+                              ),
+                            );
+                          }
+                        }
+                      },
               ),
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Task text is required'
-                  : null,
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.calendar_today),
-              title: Text(
-                _dueAt != null ? _formatDateTime(_dueAt!) : 'No date set',
-                style: _dueAt == null
-                    ? TextStyle(color: Theme.of(context).hintColor)
-                    : null,
-              ),
-              trailing: _dueAt != null
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      tooltip: 'Clear date',
-                      onPressed: () => setState(() => _dueAt = null),
+            TextButton(
+              onPressed: _saving ? null : _save,
+              child: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : null,
-              onTap: _pickDateTime,
-            ),
-            const Divider(),
-            Row(
-              children: [
-                const Icon(Icons.notifications_outlined, size: 20),
-                const SizedBox(width: 12),
-                Text('Alerts', style: Theme.of(context).textTheme.titleSmall),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: _addAlert,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add'),
-                ),
-              ],
-            ),
-            ..._alerts.asMap().entries.map((e) {
-              final index = e.key;
-              final alert = e.value;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  alert.timeBefore != null ? Icons.timer_outlined : Icons.alarm,
-                ),
-                title: Text(_formatAlert(alert)),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: 'Remove alert',
-                  onPressed: () => setState(() => _alerts.removeAt(index)),
-                ),
-              );
-            }),
-            const Divider(),
-            Row(
-              children: [
-                const Icon(Icons.people_outline, size: 20),
-                const SizedBox(width: 12),
-                Text(
-                  'Collaborators',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<AppUser>(
-              decoration: const InputDecoration(
-                hintText: 'Add a collaborator…',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              initialValue: null,
-              items: widget.users
-                  .where(
-                    (u) =>
-                        u.id != widget.currentUserId &&
-                        !_collaborators.any((c) => c.id == u.id),
-                  )
-                  .map(
-                    (u) => DropdownMenuItem(
-                      value: u,
-                      child: Text('${u.name} (${u.email})'),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (u) {
-                if (u != null) setState(() => _collaborators.add(u));
-              },
-            ),
-            ..._collaborators.asMap().entries.map((e) {
-              final index = e.key;
-              final user = e.value;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.person_outline),
-                title: Text(user.name),
-                subtitle: Text(user.email),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: 'Remove',
-                  onPressed: () =>
-                      setState(() => _collaborators.removeAt(index)),
-                ),
-              );
-            }),
-            const Divider(),
-            const SizedBox(height: 8),
-            RRuleGenerator(
-              config: RRuleGeneratorConfig(
-                headerStyle: const RRuleHeaderStyle(
-                  textStyle: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                  ),
-                ),
-                switchStyle: RRuleSwitchStyle(
-                  isCupertinoStyle: true,
-                  activeTrackColor: Colors.blue,
-                  inactiveTrackColor: Colors.grey,
-                ),
-                datePickerStyle: RRuleDatePickerStyle(
-                  datePickerButtonStyle: ButtonStyle(
-                    shape: WidgetStateProperty.all(
-                      RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    side: WidgetStateProperty.all(
-                      BorderSide(color: Colors.blue, width: 1),
-                    ),
-                  ),
-                  datePickerTextStyle: TextStyle(
-                    fontSize: 13,
-                    color: Colors.blue,
-                  ),
-                ),
-                divider: Divider(thickness: 0.5, color: Colors.blue),
-              ),
-              initialRRule: _rrule,
-              withExcludeDates: true,
-              onChange: (rrule) => _rrule = rrule,
+                  : const Text('Save'),
             ),
           ],
+        ),
+        body: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              TextFormField(
+                controller: _textController,
+                autofocus: !_isEditing,
+                minLines: 3,
+                maxLines: null,
+                decoration: const InputDecoration(
+                  labelText: 'Task',
+                  hintText: 'What needs to be done?',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Task text is required'
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.calendar_today),
+                title: Text(
+                  _dueAt != null ? _formatDateTime(_dueAt!) : 'No date set',
+                  style: _dueAt == null
+                      ? TextStyle(color: Theme.of(context).hintColor)
+                      : null,
+                ),
+                trailing: _dueAt != null
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        tooltip: 'Clear date',
+                        onPressed: () => setState(() => _dueAt = null),
+                      )
+                    : null,
+                onTap: _pickDateTime,
+              ),
+              const Divider(),
+                Row(
+                  children: [
+                    const Icon(Icons.notifications_outlined, size: 20),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Alerts',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: _addAlert,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add'),
+                    ),
+                  ],
+                ),
+                ..._alerts.asMap().entries.map((e) {
+                  final index = e.key;
+                  final alert = e.value;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      alert.timeBefore != null
+                          ? Icons.timer_outlined
+                          : Icons.alarm,
+                    ),
+                    title: Text(_formatAlert(alert)),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: 'Remove alert',
+                      onPressed: () => setState(() => _alerts.removeAt(index)),
+                    ),
+                  );
+                }),
+              const Divider(),
+              Row(
+                children: [
+                  const Icon(Icons.people_outline, size: 20),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Collaborators',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<AppUser>(
+                decoration: const InputDecoration(
+                  hintText: 'Add a collaborator…',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                value: null,
+                items: widget.users
+                    .where(
+                      (u) =>
+                          u.id != widget.currentUserId &&
+                          !_collaborators.any((c) => c.id == u.id),
+                    )
+                    .map(
+                      (u) => DropdownMenuItem(
+                        value: u,
+                        child: Text('${u.name} (${u.email})'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (u) {
+                  if (u != null) setState(() => _collaborators.add(u));
+                },
+              ),
+              ..._collaborators.asMap().entries.map((e) {
+                final index = e.key;
+                final user = e.value;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(user.name),
+                  subtitle: Text(user.email),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'Remove',
+                    onPressed: () =>
+                        setState(() => _collaborators.removeAt(index)),
+                  ),
+                );
+              }),
+              const Divider(),
+              const SizedBox(height: 8),
+              RRuleGenerator(
+                config: RRuleGeneratorConfig(
+                  headerStyle: const RRuleHeaderStyle(
+                    textStyle: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
+                  switchStyle: RRuleSwitchStyle(
+                    isCupertinoStyle: true,
+                    activeTrackColor: Colors.blue,
+                    inactiveTrackColor: Colors.grey,
+                  ),
+                  datePickerStyle: RRuleDatePickerStyle(
+                    datePickerButtonStyle: ButtonStyle(
+                      shape: WidgetStateProperty.all(
+                        RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      side: WidgetStateProperty.all(
+                        BorderSide(color: Colors.blue, width: 1),
+                      ),
+                    ),
+                    datePickerTextStyle: TextStyle(
+                      fontSize: 13,
+                      color: Colors.blue,
+                    ),
+                  ),
+                  divider: Divider(thickness: 0.5, color: Colors.blue),
+                ),
+                initialRRule: _rrule,
+                withExcludeDates: true,
+                onChange: (rrule) => _rrule = rrule,
+              ),
+            ],
+          ),
         ),
       ),
     );

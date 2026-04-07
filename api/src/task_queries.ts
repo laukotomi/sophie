@@ -61,6 +61,7 @@ export async function updateTask(
     rrule: string | null,
     dueAt: Date | null,
     collaboratorIds: string[],
+    alerts: AlertInput[],
 ): Promise<void> {
     const [existing] = await db
         .select({ id: task.id, owner: task.owner })
@@ -76,10 +77,20 @@ export async function updateTask(
             .where(eq(task.id, taskId));
 
         await tx.delete(taskCollaborator).where(eq(taskCollaborator.taskId, taskId));
-
         if (collaboratorIds.length > 0) {
             await tx.insert(taskCollaborator).values(
                 collaboratorIds.map((uid) => ({ userId: uid, taskId })),
+            );
+        }
+
+        await tx.delete(taskAlert).where(eq(taskAlert.taskId, taskId));
+        if (alerts.length > 0) {
+            await tx.insert(taskAlert).values(
+                alerts.map((a) =>
+                    a.type === 'absolute'
+                        ? { taskId, alertAt: a.alertAt, timeBefore: null }
+                        : { taskId, alertAt: null, timeBefore: a.timeBefore },
+                ),
             );
         }
     });

@@ -1,7 +1,6 @@
 import { db } from './db/index.js';
-import { user } from './db/auth.schema.js';
 import { note, collaborator, noteHistory, noteOrder, noteFiles } from './db/schema.js';
-import { eq, inArray, and, desc, notInArray, gte, sql, asc } from 'drizzle-orm';
+import { eq, and, desc, notInArray, gte, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
@@ -11,111 +10,6 @@ import { noteDirPath, noteFilePath } from './utils.js';
 
 type Tx = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
 type UploadedFile = { id: string; name: string; type: string; size: number };
-
-export async function getDashboardData(userId: string) {
-    const [users, ownedNotes, collaboratedNotes] = await Promise.all([
-        db
-            .select({ id: user.id, name: user.name, email: user.email })
-            .from(user)
-            .orderBy(asc(user.name)),
-
-        db
-            .select({
-                id: note.id,
-                text: note.text,
-                color: note.color,
-                createdAt: note.createdAt,
-                updatedAt: note.updatedAt,
-                ownerId: note.owner,
-            })
-            .from(note)
-            .where(eq(note.owner, userId)),
-
-        db
-            .select({
-                id: note.id,
-                text: note.text,
-                color: note.color,
-                createdAt: note.createdAt,
-                updatedAt: note.updatedAt,
-                ownerId: note.owner,
-                right: collaborator.right,
-            })
-            .from(note)
-            .innerJoin(collaborator, eq(collaborator.noteId, note.id))
-            .where(eq(collaborator.userId, userId)),
-    ]);
-
-    const noteIds = [
-        ...ownedNotes.map((n) => n.id),
-        ...collaboratedNotes.map((n) => n.id),
-    ];
-
-    const [collaborators, positions, files] = noteIds.length > 0
-        ? await Promise.all([
-            db
-                .select({
-                    noteId: collaborator.noteId,
-                    right: collaborator.right,
-                    userId: collaborator.userId,
-                })
-                .from(collaborator)
-                .where(inArray(collaborator.noteId, noteIds)),
-
-            db
-                .select({ noteId: noteOrder.noteId, position: noteOrder.position })
-                .from(noteOrder)
-                .where(and(eq(noteOrder.userId, userId), inArray(noteOrder.noteId, noteIds))),
-
-            db
-                .select({
-                    noteId: noteFiles.noteId,
-                    id: noteFiles.id,
-                    fileName: noteFiles.fileName,
-                    fileSize: noteFiles.fileSize,
-                    createdAt: noteFiles.createdAt,
-                })
-                .from(noteFiles)
-                .where(inArray(noteFiles.noteId, noteIds)),
-        ])
-        : [[], [], []];
-
-    const positionByNoteId = new Map(positions.map((p) => [p.noteId, p.position]));
-    const userById = new Map(users.map((u) => [u.id, u]));
-    const collaboratorsByNoteId = Map.groupBy(collaborators, (c) => c.noteId);
-    const filesByNoteId = Map.groupBy(files, (f) => f.noteId);
-
-    const notes = [
-        ...ownedNotes.map((n) => ({ ...n, right: 'edit' as const, isOwner: true })),
-        ...collaboratedNotes.map((n) => ({ ...n, isOwner: false })),
-    ]
-        .sort((a, b) => {
-            const posA = positionByNoteId.get(a.id);
-            const posB = positionByNoteId.get(b.id);
-            if (posA !== undefined && posB !== undefined) return posA - posB;
-            if (posA !== undefined) return -1;
-            if (posB !== undefined) return 1;
-            return b.updatedAt.getTime() - a.updatedAt.getTime();
-        })
-        .map((n) => ({
-            ...n,
-            position: positionByNoteId.get(n.id) ?? null,
-            color: n.color ?? null,
-            collaborators: (collaboratorsByNoteId.get(n.id) ?? []).flatMap((c) => {
-                const u = userById.get(c.userId);
-                if (!u) return [];
-                return [{ id: c.userId, name: u.name, email: u.email, right: c.right }];
-            }),
-            files: (filesByNoteId.get(n.id) ?? []).map((f) => ({
-                id: f.id,
-                fileName: f.fileName,
-                fileSize: f.fileSize,
-                createdAt: f.createdAt,
-            })),
-        }));
-
-    return { users, notes };
-}
 
 export async function editOrCreateNote(
     userId: string,

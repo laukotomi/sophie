@@ -47,6 +47,7 @@ tasks.post('/', async (c) => {
     try {
         await createTask(user.id, body.text.trim(), rrule, dueAt, collaboratorIds, alerts);
     } catch (e) {
+        console.error('[POST /api/tasks] createTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
         return c.json({ error: message }, 500);
     }
@@ -65,6 +66,7 @@ tasks.delete('/', async (c) => {
     try {
         await deleteTask(user.id, body.taskId);
     } catch (e) {
+        console.error('[DELETE /api/tasks] deleteTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
         if (message === 'Task not found') return c.json({ error: message }, 404);
         if (message === 'Forbidden') return c.json({ error: message }, 403);
@@ -100,9 +102,26 @@ tasks.put('/', async (c) => {
         ? body.collaboratorIds.filter((id: unknown) => typeof id === 'string')
         : [];
 
+    type AlertInput =
+        | { type: 'absolute'; alertAt: Date }
+        | { type: 'relative'; timeBefore: string };
+
+    const alerts: AlertInput[] = [];
+    if (Array.isArray(body.alerts)) {
+        for (const a of body.alerts) {
+            if (a?.type === 'absolute' && typeof a.alertAt === 'string') {
+                const d = new Date(a.alertAt);
+                if (!isNaN(d.getTime())) alerts.push({ type: 'absolute', alertAt: d });
+            } else if (a?.type === 'relative' && typeof a.timeBefore === 'string') {
+                alerts.push({ type: 'relative', timeBefore: a.timeBefore });
+            }
+        }
+    }
+
     try {
-        await updateTask(user.id, body.taskId, body.text.trim(), rrule, dueAt, collaboratorIds);
+        await updateTask(user.id, body.taskId, body.text.trim(), rrule, dueAt, collaboratorIds, alerts);
     } catch (e) {
+        console.error('[PUT /api/tasks] updateTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
         if (message === 'Task not found') return c.json({ error: message }, 404);
         if (message === 'Forbidden') return c.json({ error: message }, 403);
@@ -127,6 +146,7 @@ tasks.patch('/', async (c) => {
     try {
         await setTaskDone(user.id, body.taskId, body.done);
     } catch (e) {
+        console.error('[PATCH /api/tasks] setTaskDone failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
         if (message === 'Task not found') return c.json({ error: message }, 404);
         if (message === 'Forbidden') return c.json({ error: message }, 403);

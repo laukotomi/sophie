@@ -13,8 +13,13 @@ const app = new Hono();
 app.use(cors({
     origin: process.env.CORS_ORIGIN ?? '*',
     allowHeaders: ['Content-Type', 'Authorization'],
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
+
+app.onError((err, c) => {
+    console.error(`[${c.req.method}] ${c.req.url}`, err);
+    return c.json({ error: 'Internal server error' }, 500);
+});
 
 // Mount better-auth's built-in routes (sign-up, sign-out, session, etc.)
 app.on(['GET', 'POST'], '/api/auth/**', (c) => auth.handler(c.req.raw));

@@ -268,4 +268,79 @@ class BackendClient {
       throw Exception('Failed to create task: ${response.statusCode}');
     }
   }
+
+  Future<void> setTaskDone({required String taskId, required bool done}) async {
+    final response = await http
+        .patch(
+          Uri.parse('$baseUrl/api/tasks'),
+          headers: _headers,
+          body: jsonEncode({'taskId': taskId, 'done': done}),
+        )
+        .timeout(_timeout);
+
+    _checkUnauthorized(response.statusCode);
+    if (response.statusCode != 204) {
+      throw Exception('Failed to update task: ${response.statusCode}');
+    }
+  }
+
+  Future<void> deleteTask({required String taskId}) async {
+    final response = await http
+        .delete(
+          Uri.parse('$baseUrl/api/tasks'),
+          headers: _headers,
+          body: jsonEncode({'taskId': taskId}),
+        )
+        .timeout(_timeout);
+
+    _checkUnauthorized(response.statusCode);
+    if (response.statusCode != 204) {
+      throw Exception('Failed to delete task: ${response.statusCode}');
+    }
+  }
+
+  Future<void> updateTask({
+    required String taskId,
+    required String text,
+    String? rrule,
+    DateTime? dueAt,
+    List<String> collaboratorIds = const [],
+    List<({DateTime? alertAt, Duration? timeBefore})> alerts = const [],
+  }) async {
+    String _pad(int n) => n.toString().padLeft(2, '0');
+    String _durationToTime(Duration d) =>
+        '${_pad(d.inHours)}:${_pad(d.inMinutes.remainder(60))}:00';
+
+    final response = await http
+        .put(
+          Uri.parse('$baseUrl/api/tasks'),
+          headers: _headers,
+          body: jsonEncode({
+            'taskId': taskId,
+            'text': text,
+            if (rrule != null && rrule.isNotEmpty) 'rrule': rrule,
+            if (dueAt != null) 'dueAt': dueAt.toUtc().toIso8601String(),
+            if (collaboratorIds.isNotEmpty) 'collaboratorIds': collaboratorIds,
+            'alerts': alerts
+                .map(
+                  (a) => a.alertAt != null
+                      ? {
+                          'type': 'absolute',
+                          'alertAt': a.alertAt!.toUtc().toIso8601String(),
+                        }
+                      : {
+                          'type': 'relative',
+                          'timeBefore': _durationToTime(a.timeBefore!),
+                        },
+                )
+                .toList(),
+          }),
+        )
+        .timeout(_timeout);
+
+    _checkUnauthorized(response.statusCode);
+    if (response.statusCode != 204) {
+      throw Exception('Failed to update task: ${response.statusCode}');
+    }
+  }
 }

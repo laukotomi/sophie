@@ -96,11 +96,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 usingCache: _usingCache,
                 onRefresh: _refresh,
               ),
-              TasksScreen(data: data, client: widget.client, onLoggedOut: widget.onLoggedOut),
+              TasksScreen(
+                data: data,
+                client: widget.client,
+                onLoggedOut: widget.onLoggedOut,
+                onRefresh: () async => _refresh(),
+              ),
             ],
           ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _selectedIndex,
+            height: 64,
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
             onDestinationSelected: (index) =>
                 setState(() => _selectedIndex = index),
             destinations: const [
