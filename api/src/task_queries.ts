@@ -12,6 +12,7 @@ export async function createTask(
     text: string,
     rrule: string | null,
     dueAt: Date | null,
+    color: string | null,
     collaboratorIds: string[],
     alerts: AlertInput[],
 ): Promise<void> {
@@ -23,6 +24,7 @@ export async function createTask(
             text,
             rrule,
             dueAt,
+            color,
         });
 
         if (collaboratorIds.length > 0) {
@@ -60,6 +62,7 @@ export async function updateTask(
     text: string,
     rrule: string | null,
     dueAt: Date | null,
+    color: string | null,
     collaboratorIds: string[],
     alerts: AlertInput[],
 ): Promise<void> {
@@ -73,7 +76,7 @@ export async function updateTask(
 
     await db.transaction(async (tx) => {
         await tx.update(task)
-            .set({ text, rrule, dueAt })
+            .set({ text, rrule, dueAt, color })
             .where(eq(task.id, taskId));
 
         await tx.delete(taskCollaborator).where(eq(taskCollaborator.taskId, taskId));

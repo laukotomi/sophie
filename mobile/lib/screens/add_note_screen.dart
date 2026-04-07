@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:sophie/backend.dart';
 import 'package:sophie/screens/add_collaborator_screen.dart';
 import 'package:sophie/services/markdown_text_controller.dart';
+import 'package:sophie/utils/note_colors.dart';
 import 'package:sophie/widgets/note_settings_dialog.dart';
 
 class AddNoteScreen extends StatefulWidget {
@@ -105,28 +106,14 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
     }
   }
 
-  // Predefined palette. null = theme default.
-  static const _palette = [
-    null,
-    '#B71C1C', // red
-    '#E65100', // orange
-    '#F9A825', // yellow
-    '#1B5E20', // green
-    '#006064', // cyan
-    '#0D47A1', // blue
-    '#4A148C', // purple
-    '#880E4F', // pink
-    '#4E342E', // brown
-  ];
-
   Future<void> _openSettings() async {
     await showDialog<void>(
       context: context,
       builder: (ctx) => NoteSettingsDialog(
         initialPosition: _fixedPosition,
         initialColor: _color,
-        palette: _palette,
-        contrastColor: _contrastColor,
+        palette: kNotePalette,
+        contrastColor: noteContrastColor,
         onApply: (position, color) {
           setState(() {
             _fixedPosition = position;
@@ -135,13 +122,6 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
         },
       ),
     );
-  }
-
-  /// Returns black or white depending on which contrasts better with [hex].
-  static Color _contrastColor(String hex) {
-    final c = Color(int.parse('FF${hex.substring(1)}', radix: 16));
-    final luminance = c.computeLuminance();
-    return luminance > 0.35 ? Colors.black87 : Colors.white;
   }
 
   Future<void> _openAddCollaborator() async {

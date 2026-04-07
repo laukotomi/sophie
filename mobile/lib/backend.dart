@@ -229,6 +229,7 @@ class BackendClient {
     required String text,
     String? rrule,
     DateTime? dueAt,
+    String? color,
     List<String> collaboratorIds = const [],
     List<({DateTime? alertAt, Duration? timeBefore})> alerts = const [],
   }) async {
@@ -244,6 +245,7 @@ class BackendClient {
             'text': text,
             if (rrule != null && rrule.isNotEmpty) 'rrule': rrule,
             if (dueAt != null) 'dueAt': dueAt.toUtc().toIso8601String(),
+            'color': color,
             if (collaboratorIds.isNotEmpty) 'collaboratorIds': collaboratorIds,
             if (alerts.isNotEmpty)
               'alerts': alerts
@@ -304,6 +306,7 @@ class BackendClient {
     required String text,
     String? rrule,
     DateTime? dueAt,
+    String? color,
     List<String> collaboratorIds = const [],
     List<({DateTime? alertAt, Duration? timeBefore})> alerts = const [],
   }) async {
@@ -320,6 +323,7 @@ class BackendClient {
             'text': text,
             if (rrule != null && rrule.isNotEmpty) 'rrule': rrule,
             if (dueAt != null) 'dueAt': dueAt.toUtc().toIso8601String(),
+            'color': color,
             if (collaboratorIds.isNotEmpty) 'collaboratorIds': collaboratorIds,
             'alerts': alerts
                 .map(

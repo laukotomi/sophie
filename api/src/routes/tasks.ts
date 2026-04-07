@@ -24,6 +24,8 @@ tasks.post('/', async (c) => {
         }
     }
 
+    const color = typeof body.color === 'string' && body.color ? body.color : null;
+
     const collaboratorIds: string[] = Array.isArray(body.collaboratorIds)
         ? body.collaboratorIds.filter((id: unknown) => typeof id === 'string')
         : [];
@@ -45,7 +47,7 @@ tasks.post('/', async (c) => {
     }
 
     try {
-        await createTask(user.id, body.text.trim(), rrule, dueAt, collaboratorIds, alerts);
+        await createTask(user.id, body.text.trim(), rrule, dueAt, color, collaboratorIds, alerts);
     } catch (e) {
         console.error('[POST /api/tasks] createTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -98,6 +100,8 @@ tasks.put('/', async (c) => {
         }
     }
 
+    const color = typeof body.color === 'string' && body.color ? body.color : null;
+
     const collaboratorIds: string[] = Array.isArray(body.collaboratorIds)
         ? body.collaboratorIds.filter((id: unknown) => typeof id === 'string')
         : [];
@@ -119,7 +123,7 @@ tasks.put('/', async (c) => {
     }
 
     try {
-        await updateTask(user.id, body.taskId, body.text.trim(), rrule, dueAt, collaboratorIds, alerts);
+        await updateTask(user.id, body.taskId, body.text.trim(), rrule, dueAt, color, collaboratorIds, alerts);
     } catch (e) {
         console.error('[PUT /api/tasks] updateTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';

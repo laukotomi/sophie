@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sophie/backend.dart';
 import 'package:sophie/models.dart';
 import 'package:sophie/screens/add_task_screen.dart';
+import 'package:sophie/utils/note_colors.dart';
 import 'package:sophie/widgets/note_chip.dart';
 
 class TaskCard extends StatefulWidget {
@@ -66,6 +67,7 @@ class _TaskCardState extends State<TaskCard> {
     final done = widget.task.doneAt != null;
 
     return Card(
+      color: widget.task.color != null ? hexToColor(widget.task.color!) : null,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rrule_generator/rrule_generator.dart';
 import 'package:sophie/backend.dart';
+import 'package:sophie/widgets/task_settings_dialog.dart';
 
 /// An alert is stored either as an absolute datetime or as a duration before dueAt.
 /// When the user picks a time and _dueAt is set, we compute the difference and
@@ -41,6 +42,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   late String _rrule;
   late final List<_Alert> _alerts;
   late final List<AppUser> _collaborators;
+  String? _color;
 
   bool get _isEditing => widget.existingTask != null;
 
@@ -58,6 +60,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     return _textController.text.trim() != t.text.trim() ||
         _dueAt != t.dueAt ||
         _rrule != (t.rrule ?? '') ||
+        _color != t.color ||
         originalCollabIds.length != currentCollabIds.length ||
         !originalCollabIds.containsAll(currentCollabIds) ||
         _alerts.length != t.alerts.length;
@@ -70,6 +73,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     _textController = TextEditingController(text: t?.text ?? '');
     _dueAt = t?.dueAt;
     _rrule = t?.rrule ?? '';
+    _color = t?.color;
     // Pre-populate alerts from existing task
     _alerts = t == null
         ? []
@@ -171,6 +175,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           text: _textController.text.trim(),
           rrule: _rrule.isNotEmpty ? _rrule : null,
           dueAt: _dueAt,
+          color: _color,
           collaboratorIds: _collaborators.map((u) => u.id).toList(),
           alerts: _alerts
               .map((a) => (alertAt: a.alertAt, timeBefore: a.timeBefore))
@@ -181,6 +186,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           text: _textController.text.trim(),
           rrule: _rrule.isNotEmpty ? _rrule : null,
           dueAt: _dueAt,
+          color: _color,
           collaboratorIds: _collaborators.map((u) => u.id).toList(),
           alerts: _alerts
               .map((a) => (alertAt: a.alertAt, timeBefore: a.timeBefore))
@@ -303,6 +309,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         }
                       },
               ),
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: 'Task settings',
+              onPressed: (_saving || _deleting)
+                  ? null
+                  : () async {
+                      await showDialog<void>(
+                        context: context,
+                        builder: (ctx) => TaskSettingsDialog(
+                          initialColor: _color,
+                          onApply: (color) => setState(() => _color = color),
+                        ),
+                      );
+                    },
+            ),
             TextButton(
               onPressed: _saving ? null : _save,
               child: _saving
