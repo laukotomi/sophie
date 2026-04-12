@@ -225,7 +225,7 @@ class BackendClient {
     }
   }
 
-  Future<void> createTask({
+  Future<String> createTask({
     required String text,
     String? rrule,
     DateTime? dueAt,
@@ -233,9 +233,9 @@ class BackendClient {
     List<String> collaboratorIds = const [],
     List<({DateTime? alertAt, Duration? timeBefore})> alerts = const [],
   }) async {
-    String _pad(int n) => n.toString().padLeft(2, '0');
-    String _durationToTime(Duration d) =>
-        '${_pad(d.inHours)}:${_pad(d.inMinutes.remainder(60))}:00';
+    String pad(int n) => n.toString().padLeft(2, '0');
+    String durationToTime(Duration d) =>
+        '${pad(d.inHours)}:${pad(d.inMinutes.remainder(60))}:00';
 
     final response = await http
         .post(
@@ -257,7 +257,7 @@ class BackendClient {
                           }
                         : {
                             'type': 'relative',
-                            'timeBefore': _durationToTime(a.timeBefore!),
+                            'timeBefore': durationToTime(a.timeBefore!),
                           },
                   )
                   .toList(),
@@ -269,6 +269,9 @@ class BackendClient {
     if (response.statusCode != 201) {
       throw Exception('Failed to create task: ${response.statusCode}');
     }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return json['id'] as String;
   }
 
   Future<void> setTaskDone({required String taskId, required bool done}) async {
@@ -310,9 +313,9 @@ class BackendClient {
     List<String> collaboratorIds = const [],
     List<({DateTime? alertAt, Duration? timeBefore})> alerts = const [],
   }) async {
-    String _pad(int n) => n.toString().padLeft(2, '0');
-    String _durationToTime(Duration d) =>
-        '${_pad(d.inHours)}:${_pad(d.inMinutes.remainder(60))}:00';
+    String pad(int n) => n.toString().padLeft(2, '0');
+    String durationToTime(Duration d) =>
+        '${pad(d.inHours)}:${pad(d.inMinutes.remainder(60))}:00';
 
     final response = await http
         .put(
@@ -334,7 +337,7 @@ class BackendClient {
                         }
                       : {
                           'type': 'relative',
-                          'timeBefore': _durationToTime(a.timeBefore!),
+                          'timeBefore': durationToTime(a.timeBefore!),
                         },
                 )
                 .toList(),

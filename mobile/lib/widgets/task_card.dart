@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:sophie/backend.dart';
-import 'package:sophie/models.dart';
 import 'package:sophie/screens/add_task_screen.dart';
 import 'package:sophie/utils/note_colors.dart';
 import 'package:sophie/widgets/note_chip.dart';

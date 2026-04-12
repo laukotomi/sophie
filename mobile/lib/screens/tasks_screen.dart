@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sophie/backend.dart';
-import 'package:sophie/models.dart';
 import 'package:sophie/screens/add_task_screen.dart';
 import 'package:sophie/widgets/task_card.dart';
 import 'package:table_calendar/table_calendar.dart';

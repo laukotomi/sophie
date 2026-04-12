@@ -15,7 +15,7 @@ export async function createTask(
     color: string | null,
     collaboratorIds: string[],
     alerts: AlertInput[],
-): Promise<void> {
+): Promise<string> {
     const taskId = randomUUID();
     await db.transaction(async (tx) => {
         await tx.insert(task).values({
@@ -43,6 +43,8 @@ export async function createTask(
             );
         }
     });
+
+    return taskId;
 }
 export async function deleteTask(userId: string, taskId: string): Promise<void> {
     const [existing] = await db

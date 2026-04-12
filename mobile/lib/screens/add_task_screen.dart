@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rrule_generator/rrule_generator.dart';
 import 'package:sophie/backend.dart';
+import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/widgets/task_settings_dialog.dart';
 
 /// An alert is stored either as an absolute datetime or as a duration before dueAt.
@@ -169,9 +170,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
+      String taskId;
       if (_isEditing) {
+        taskId = widget.existingTask!.id;
         await widget.client.updateTask(
-          taskId: widget.existingTask!.id,
+          taskId: taskId,
           text: _textController.text.trim(),
           rrule: _rrule.isNotEmpty ? _rrule : null,
           dueAt: _dueAt,
@@ -182,7 +185,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               .toList(),
         );
       } else {
-        await widget.client.createTask(
+        taskId = await widget.client.createTask(
           text: _textController.text.trim(),
           rrule: _rrule.isNotEmpty ? _rrule : null,
           dueAt: _dueAt,
@@ -193,6 +196,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               .toList(),
         );
       }
+      await AlertNotifications.scheduleForTask(_buildSchedulingTask(taskId));
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -202,6 +206,31 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         ).showSnackBar(SnackBar(content: Text('Failed to save task: $e')));
       }
     }
+  }
+
+  /// Builds a minimal [Task] containing only the fields [AlertNotifications]
+  /// needs: id, text, dueAt, and alerts.
+  Task _buildSchedulingTask(String taskId) {
+    String pad(int n) => n.toString().padLeft(2, '0');
+    return Task(
+      id: taskId,
+      text: _textController.text.trim(),
+      dueAt: _dueAt,
+      alerts: _alerts.map((a) {
+        if (a.alertAt != null) {
+          return TaskAlert(id: 0, alertAt: a.alertAt);
+        }
+        final d = a.timeBefore!;
+        return TaskAlert(
+          id: 0,
+          timeBefore:
+              '${pad(d.inHours)}:${pad(d.inMinutes.remainder(60))}:${pad(d.inSeconds.remainder(60))}',
+        );
+      }).toList(),
+      isOwner: true,
+      createdAt: DateTime.now(),
+      collaborators: [],
+    );
   }
 
   String _formatDateTime(DateTime dt) {
@@ -296,6 +325,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           await widget.client.deleteTask(
                             taskId: widget.existingTask!.id,
                           );
+                          await AlertNotifications.cancelForTask(
+                            widget.existingTask!.id,
+                          );
                           if (context.mounted) Navigator.of(context).pop(true);
                         } catch (e) {
                           if (mounted) {
@@ -375,40 +407,37 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 onTap: _pickDateTime,
               ),
               const Divider(),
-                Row(
-                  children: [
-                    const Icon(Icons.notifications_outlined, size: 20),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Alerts',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: _addAlert,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Add'),
-                    ),
-                  ],
-                ),
-                ..._alerts.asMap().entries.map((e) {
-                  final index = e.key;
-                  final alert = e.value;
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      alert.timeBefore != null
-                          ? Icons.timer_outlined
-                          : Icons.alarm,
-                    ),
-                    title: Text(_formatAlert(alert)),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip: 'Remove alert',
-                      onPressed: () => setState(() => _alerts.removeAt(index)),
-                    ),
-                  );
-                }),
+              Row(
+                children: [
+                  const Icon(Icons.notifications_outlined, size: 20),
+                  const SizedBox(width: 12),
+                  Text('Alerts', style: Theme.of(context).textTheme.titleSmall),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _addAlert,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add'),
+                  ),
+                ],
+              ),
+              ..._alerts.asMap().entries.map((e) {
+                final index = e.key;
+                final alert = e.value;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    alert.timeBefore != null
+                        ? Icons.timer_outlined
+                        : Icons.alarm,
+                  ),
+                  title: Text(_formatAlert(alert)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'Remove alert',
+                    onPressed: () => setState(() => _alerts.removeAt(index)),
+                  ),
+                );
+              }),
               const Divider(),
               Row(
                 children: [
@@ -427,7 +456,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
-                value: null,
+                initialValue: null,
                 items: widget.users
                     .where(
                       (u) =>

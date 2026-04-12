@@ -46,15 +46,16 @@ tasks.post('/', async (c) => {
         }
     }
 
+    let taskId: string;
     try {
-        await createTask(user.id, body.text.trim(), rrule, dueAt, color, collaboratorIds, alerts);
+        taskId = await createTask(user.id, body.text.trim(), rrule, dueAt, color, collaboratorIds, alerts);
     } catch (e) {
         console.error('[POST /api/tasks] createTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
         return c.json({ error: message }, 500);
     }
 
-    return new Response(null, { status: 201 });
+    return c.json({ id: taskId }, 201);
 });
 
 tasks.delete('/', async (c) => {
