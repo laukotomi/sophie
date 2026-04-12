@@ -9,6 +9,10 @@ class UnauthorizedException implements Exception {
   const UnauthorizedException();
 }
 
+class NoteLockedException implements Exception {
+  const NoteLockedException();
+}
+
 class BackendClient {
   static const _timeout = Duration(seconds: 10);
   static const _uploadTimeout = Duration(seconds: 60);
@@ -205,6 +209,56 @@ class BackendClient {
     if (response.statusCode == 404) throw Exception('File not found');
     if (response.statusCode != 204) {
       throw Exception('Failed to delete file: ${response.statusCode}');
+    }
+  }
+
+  /// Acquires the edit lock for [noteId].
+  /// Returns the latest note text on success.
+  /// Throws [NoteLockedException] if another user holds the lock.
+  Future<String> acquireNoteLock(String noteId) async {
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/api/notes/edit'),
+          headers: _headers,
+          body: jsonEncode({'noteId': noteId}),
+        )
+        .timeout(_timeout);
+
+    _checkUnauthorized(response.statusCode);
+    if (response.statusCode == 423) throw NoteLockedException();
+    if (response.statusCode == 403) throw Exception('Forbidden');
+    if (response.statusCode == 404) throw Exception('Note not found');
+    if (response.statusCode != 200) {
+      throw Exception('Failed to acquire note lock: ${response.statusCode}');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return json['text'] as String;
+  }
+
+  Future<void> releaseNoteLock(String noteId) async {
+    await http
+        .delete(
+          Uri.parse('$baseUrl/api/notes/edit'),
+          headers: _headers,
+          body: jsonEncode({'noteId': noteId}),
+        )
+        .timeout(_timeout);
+    // Fire-and-forget: ignore errors — lock will expire on its own.
+  }
+
+  Future<void> refreshNoteLock(String noteId) async {
+    final response = await http
+        .patch(
+          Uri.parse('$baseUrl/api/notes/edit'),
+          headers: _headers,
+          body: jsonEncode({'noteId': noteId}),
+        )
+        .timeout(_timeout);
+
+    _checkUnauthorized(response.statusCode);
+    if (response.statusCode == 409) throw Exception('Lock not held');
+    if (response.statusCode != 204) {
+      throw Exception('Failed to refresh note lock: ${response.statusCode}');
     }
   }
 

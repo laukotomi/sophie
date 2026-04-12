@@ -1,6 +1,6 @@
 import { db } from './db/index.js';
 import { note, collaborator, noteHistory, noteOrder, noteFiles } from './db/schema.js';
-import { eq, and, desc, notInArray, gte, sql } from 'drizzle-orm';
+import { eq, and, or, isNull, lt, desc, notInArray, gte, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
@@ -40,11 +40,15 @@ export async function editOrCreateNote(
 
             if (isEdit) {
                 const existing = await assertEditAccess(tx, targetNoteId, userId);
+
+                const holdsLock = existing.editingBy === userId;
+                if (!holdsLock) throw new Error('Lock required');
+
                 await saveNoteBackup(tx, targetNoteId, existing.text);
 
                 await tx
                     .update(note)
-                    .set({ text: text.trim(), color: color ?? null })
+                    .set({ text: text.trim(), color: color ?? null, editingBy: null, lockedUntil: null })
                     .where(eq(note.id, targetNoteId));
 
                 await tx.delete(collaborator).where(eq(collaborator.noteId, targetNoteId));
@@ -110,6 +114,55 @@ export async function editOrCreateNote(
     }
 }
 
+export async function acquireNoteLock(userId: string, noteId: string): Promise<{ text: string }> {
+    return db.transaction(async (tx) => {
+        await assertEditAccess(tx, noteId, userId);
+
+        const now = new Date();
+        const lockedUntil = new Date(now.getTime() + 60_000);
+
+        // Atomically acquire: succeed if unlocked, expired, or already held by this user.
+        const updated = await tx
+            .update(note)
+            .set({ editingBy: userId, lockedUntil })
+            .where(
+                and(
+                    eq(note.id, noteId),
+                    or(isNull(note.editingBy), lt(note.lockedUntil, now), eq(note.editingBy, userId)),
+                ),
+            )
+            .returning({ text: note.text });
+
+        if (updated.length === 0) {
+            const [locked] = await tx
+                .select({ editingBy: note.editingBy })
+                .from(note)
+                .where(eq(note.id, noteId));
+            throw new Error(`Locked:${locked?.editingBy ?? 'unknown'}`);
+        }
+
+        return { text: updated[0].text };
+    });
+}
+
+export async function releaseNoteLock(userId: string, noteId: string): Promise<void> {
+    await db
+        .update(note)
+        .set({ editingBy: null, lockedUntil: null })
+        .where(and(eq(note.id, noteId), eq(note.editingBy, userId)));
+}
+
+export async function refreshNoteLock(userId: string, noteId: string): Promise<void> {
+    const lockedUntil = new Date(Date.now() + 60_000);
+    const updated = await db
+        .update(note)
+        .set({ lockedUntil })
+        .where(and(eq(note.id, noteId), eq(note.editingBy, userId)))
+        .returning({ id: note.id });
+
+    if (updated.length === 0) throw new Error('Lock not held');
+}
+
 export async function deleteNote(userId: string, noteId: string): Promise<void> {
     const [existing] = await db
         .select({ id: note.id, owner: note.owner })
@@ -157,9 +210,9 @@ async function assertEditAccess(
     tx: Tx,
     noteId: string,
     userId: string,
-): Promise<{ id: string; owner: string; text: string }> {
+): Promise<{ id: string; owner: string; text: string; editingBy: string | null }> {
     const [existing] = await tx
-        .select({ id: note.id, owner: note.owner, text: note.text })
+        .select({ id: note.id, owner: note.owner, text: note.text, editingBy: note.editingBy })
         .from(note)
         .where(eq(note.id, noteId));
 

@@ -57,7 +57,7 @@ class NoteCollaborator {
 
 class Note {
   final String id;
-  final String text;
+  String text;
   final String? color;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -68,7 +68,7 @@ class Note {
   final List<NoteCollaborator> collaborators;
   final List<NoteFile> files;
 
-  const Note({
+  Note({
     required this.id,
     required this.text,
     this.color,

@@ -13,6 +13,8 @@ export const note = pgTable('note', {
         .references(() => user.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    editingBy: text('editing_by').references(() => user.id, { onDelete: 'set null' }),
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
 });
 
 export const collaborator = pgTable('collaborator', {

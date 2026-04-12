@@ -31,6 +31,7 @@ class _NoteCardState extends State<NoteCard> {
   final _overlayController = OverlayPortalController();
   double _overlayTop = 0;
   double _overlayRight = 0;
+  bool _acquiringLock = false;
 
   @override
   void initState() {
@@ -90,6 +91,36 @@ class _NoteCardState extends State<NoteCard> {
   }
 
   Future<void> _openEdit(BuildContext ctx) async {
+    if (_acquiringLock) return;
+    setState(() => _acquiringLock = true);
+
+    String latestText;
+    try {
+      latestText = await widget.client.acquireNoteLock(widget.note.id);
+    } on NoteLockedException {
+      if (!ctx.mounted) return;
+      setState(() => _acquiringLock = false);
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Someone else is editing this note. Please try again later.',
+          ),
+        ),
+      );
+      return;
+    } catch (_) {
+      if (!ctx.mounted) return;
+      setState(() => _acquiringLock = false);
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(content: Text('Failed to open note for editing.')),
+      );
+      return;
+    }
+
+    if (!ctx.mounted) return;
+    widget.note.text = latestText;
+    setState(() => _acquiringLock = false);
+
     final edited = await Navigator.of(ctx).push<bool>(
       MaterialPageRoute(
         builder: (_) => AddNoteScreen(
@@ -100,6 +131,25 @@ class _NoteCardState extends State<NoteCard> {
       ),
     );
     if (edited == true) widget.onEdited();
+  }
+
+  Widget _editButton(BuildContext ctx) {
+    if (_acquiringLock) {
+      return const SizedBox(
+        width: 40,
+        height: 40,
+        child: Padding(
+          padding: EdgeInsets.all(8),
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    return IconButton(
+      icon: const Icon(Icons.edit_outlined),
+      tooltip: 'Edit note',
+      visualDensity: VisualDensity.compact,
+      onPressed: () => _openEdit(ctx),
+    );
   }
 
   @override
@@ -116,12 +166,7 @@ class _NoteCardState extends State<NoteCard> {
         right: _overlayRight,
         child: Material(
           color: Colors.transparent,
-          child: IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit note',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _openEdit(ctx),
-          ),
+          child: _editButton(ctx),
         ),
       ),
       child: Card(
@@ -156,12 +201,7 @@ class _NoteCardState extends State<NoteCard> {
                     ),
                   ),
                   if (canEdit)
-                    IconButton(
-                      icon: const Icon(Icons.edit_outlined),
-                      tooltip: 'Edit note',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => _openEdit(context),
-                    ),
+                    _editButton(context),
                 ],
               ),
               const SizedBox(height: 8),

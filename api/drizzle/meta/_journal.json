@@ -50,6 +50,13 @@
       "when": 1775555350828,
       "tag": "0006_supreme_blazing_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776000825173,
+      "tag": "0007_overconfident_corsair",
+      "breakpoints": true
     }
   ]
 }

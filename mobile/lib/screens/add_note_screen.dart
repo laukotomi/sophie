@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:sophie/backend.dart';
@@ -23,7 +24,8 @@ class AddNoteScreen extends StatefulWidget {
   State<AddNoteScreen> createState() => _AddNoteScreenState();
 }
 
-class _AddNoteScreenState extends State<AddNoteScreen> {
+class _AddNoteScreenState extends State<AddNoteScreen>
+    with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _textController;
 
@@ -34,6 +36,9 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
 
   bool _saving = false;
   bool _deleting = false;
+  bool _releasingLock = false;
+  bool _lockError = false;
+  Timer? _lockHeartbeat;
   int? _fixedPosition;
   String? _color;
   String? _errorMessage;
@@ -48,12 +53,14 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
   @override
   void initState() {
     super.initState();
+    if (_isEditing) WidgetsBinding.instance.addObserver(this);
     _textController = MarkdownTextController(
       text: widget.existingNote?.text ?? '',
     );
     _fixedPosition = widget.existingNote?.position;
     _color = widget.existingNote?.color;
     _existingFiles = List.of(widget.existingNote?.files ?? []);
+    if (_isEditing) _startLockHeartbeat();
     // Pre-populate collaborators from the existing note, matching against users
     _collaborators =
         widget.existingNote?.collaborators
@@ -69,6 +76,8 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
 
   @override
   void dispose() {
+    if (_isEditing) WidgetsBinding.instance.removeObserver(this);
+    _lockHeartbeat?.cancel();
     _textController.dispose();
     super.dispose();
   }
@@ -164,6 +173,42 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
     });
   }
 
+  void _startLockHeartbeat() {
+    _lockHeartbeat = Timer.periodic(const Duration(seconds: 20), (_) async {
+      try {
+        await widget.client.refreshNoteLock(widget.existingNote!.id);
+        if (mounted && _lockError) setState(() => _lockError = false);
+      } catch (_) {
+        if (mounted && !_lockError) setState(() => _lockError = true);
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_isEditing) return;
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _lockHeartbeat?.cancel();
+      _lockHeartbeat = null;
+    } else if (state == AppLifecycleState.resumed &&
+        _lockHeartbeat == null) {
+      _startLockHeartbeat();
+    }
+  }
+
+  Future<void> _releaseEditLock() async {
+    if (!_isEditing) return;
+    setState(() => _releasingLock = true);
+    try {
+      await widget.client.releaseNoteLock(widget.existingNote!.id);
+    } catch (_) {
+      // Ignore — lock will expire on its own.
+    } finally {
+      if (mounted) setState(() => _releasingLock = false);
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -216,7 +261,8 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         if (!_hasChanges) {
-          Navigator.of(context).pop();
+          await _releaseEditLock();
+          if (context.mounted) Navigator.of(context).pop();
           return;
         }
         final confirmed = await showDialog<bool>(
@@ -236,12 +282,29 @@ class _AddNoteScreenState extends State<AddNoteScreen> {
             ],
           ),
         );
-        if (confirmed == true && context.mounted) Navigator.of(context).pop();
+        if (confirmed == true && context.mounted) {
+          await _releaseEditLock();
+          if (context.mounted) Navigator.of(context).pop();
+        }
       },
       child: Scaffold(
         appBar: AppBar(
           title: Text(_isEditing ? 'Edit Note' : 'New Note'),
+          bottom: _releasingLock
+              ? const PreferredSize(
+                  preferredSize: Size.fromHeight(4),
+                  child: LinearProgressIndicator(),
+                )
+              : null,
           actions: [
+            if (_lockError)
+              const Tooltip(
+                message: 'Could not extend edit lock — will retry',
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4),
+                  child: Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                ),
+              ),
             if (_isEditing)
               IconButton(
                 icon: _deleting

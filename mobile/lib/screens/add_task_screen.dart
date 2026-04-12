@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rrule_generator/rrule_generator.dart';
 import 'package:sophie/backend.dart';
-import 'package:sophie/services/alert_notifications.dart';
+// import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/widgets/task_settings_dialog.dart';
 
 /// An alert is stored either as an absolute datetime or as a duration before dueAt.
@@ -196,7 +196,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               .toList(),
         );
       }
-      await AlertNotifications.scheduleForTask(_buildSchedulingTask(taskId));
+      // await AlertNotifications.scheduleForTask(_buildSchedulingTask(taskId));
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -325,9 +325,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           await widget.client.deleteTask(
                             taskId: widget.existingTask!.id,
                           );
-                          await AlertNotifications.cancelForTask(
-                            widget.existingTask!.id,
-                          );
+                          // await AlertNotifications.cancelForTask(
+                          //   widget.existingTask!.id,
+                          // );
                           if (context.mounted) Navigator.of(context).pop(true);
                         } catch (e) {
                           if (mounted) {
