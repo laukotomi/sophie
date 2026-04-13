@@ -9,22 +9,22 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        // Show over lock screen only when launched by a full-screen notification intent.
-        if (intent?.getBooleanExtra("showWhenLocked", false) == true) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                setShowWhenLocked(true)
-                setTurnScreenOn(true)
-            } else {
-                @Suppress("DEPRECATION")
-                window.addFlags(
-                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-                )
-            }
-        }
-    }
+    // override fun onCreate(savedInstanceState: Bundle?) {
+    //     super.onCreate(savedInstanceState)
+    //     // Show over lock screen only when launched by a full-screen notification intent.
+    //     if (intent?.getBooleanExtra("showWhenLocked", false) == true) {
+    //         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+    //             setShowWhenLocked(true)
+    //             setTurnScreenOn(true)
+    //         } else {
+    //             @Suppress("DEPRECATION")
+    //             window.addFlags(
+    //                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+    //                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+    //             )
+    //         }
+    //     }
+    // }
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(

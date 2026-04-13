@@ -2,6 +2,19 @@ import { db } from './db/index.js';
 import { randomUUID } from "crypto";
 import { task, taskCollaborator, taskAlert } from './db/schema.js';
 import { and, eq } from 'drizzle-orm';
+import rrulePkg from 'rrule';
+const { RRule } = rrulePkg;
+
+function getNextOccurrence(rruleStr: string, currentDueAt: Date): Date | null {
+    try {
+        const normalized = rruleStr.startsWith('RRULE:') ? rruleStr : `RRULE:${rruleStr}`;
+        const rule = RRule.fromString(normalized);
+        const r = new RRule({ ...rule.origOptions, dtstart: currentDueAt });
+        return r.after(currentDueAt, false);
+    } catch {
+        return null;
+    }
+}
 
 type AlertInput =
     | { type: 'absolute'; alertAt: Date }
@@ -101,13 +114,22 @@ export async function updateTask(
     });
 }
 
+export type NextTaskInfo = { nextTaskId: string; nextDueAt: Date };
+
 export async function setTaskDone(
     userId: string,
     taskId: string,
     done: boolean,
-): Promise<void> {
+): Promise<NextTaskInfo | null> {
     const [existing] = await db
-        .select({ id: task.id, owner: task.owner })
+        .select({
+            id: task.id,
+            owner: task.owner,
+            text: task.text,
+            rrule: task.rrule,
+            dueAt: task.dueAt,
+            color: task.color,
+        })
         .from(task)
         .where(eq(task.id, taskId));
 
@@ -129,4 +151,34 @@ export async function setTaskDone(
     await db.update(task)
         .set({ doneAt: done ? new Date() : null })
         .where(eq(task.id, taskId));
+
+    if (!done || !existing.rrule || !existing.dueAt) return null;
+
+    const nextDueAt = getNextOccurrence(existing.rrule, existing.dueAt);
+    if (!nextDueAt) return null;
+
+    const [collabs, alertRows] = await Promise.all([
+        db.select({ userId: taskCollaborator.userId })
+            .from(taskCollaborator)
+            .where(eq(taskCollaborator.taskId, taskId)),
+        db.select({ timeBefore: taskAlert.timeBefore })
+            .from(taskAlert)
+            .where(eq(taskAlert.taskId, taskId)),
+    ]);
+
+    const alerts: AlertInput[] = alertRows
+        .filter((a) => a.timeBefore !== null)
+        .map((a) => ({ type: 'relative' as const, timeBefore: a.timeBefore! }));
+
+    const nextTaskId = await createTask(
+        existing.owner,
+        existing.text,
+        existing.rrule,
+        nextDueAt,
+        existing.color,
+        collabs.map((c) => c.userId),
+        alerts,
+    );
+
+    return { nextTaskId, nextDueAt };
 }

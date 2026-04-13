@@ -49,7 +49,6 @@ class _MainAppState extends State<MainApp> {
         onUnauthorized: _onLoggedOut,
       );
     }
-    AlertNotifications.requestPermissions();
   }
 
   void _onLoggedIn(String token, String serverUrl) {
@@ -76,10 +75,7 @@ class _MainAppState extends State<MainApp> {
     return MaterialApp(
       theme: ThemeData.dark(useMaterial3: true),
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      supportedLocales: const [
-        Locale('en'),
-        Locale('hu'),
-      ],
+      supportedLocales: const [Locale('en'), Locale('hu')],
       locale: Locale(Platform.localeName.split('_').first),
       builder: (context, child) => SafeArea(child: child!),
       home: _token == null

@@ -32,12 +32,32 @@ class _TaskCardState extends State<TaskCard> {
     setState(() => _loading = true);
     final markingDone = widget.task.doneAt == null;
     try {
-      await widget.client.setTaskDone(
+      final next = await widget.client.setTaskDone(
         taskId: widget.task.id,
         done: markingDone,
       );
       if (markingDone) {
         await AlertNotifications.cancelForTask(widget.task.id);
+      }
+      if (next != null) {
+        // Schedule alerts for the newly spawned recurring task.
+        // Only relative (timeBefore) alerts transfer; absolute ones would be past-dated.
+        await AlertNotifications.scheduleForTask(
+          Task(
+            id: next.nextTaskId,
+            text: widget.task.text,
+            dueAt: next.nextDueAt,
+            rrule: widget.task.rrule,
+            color: widget.task.color,
+            isOwner: true,
+            createdAt: DateTime.now(),
+            collaborators: [],
+            alerts: widget.task.alerts
+                .where((a) => a.timeBefore != null)
+                .map((a) => TaskAlert(id: 0, timeBefore: a.timeBefore))
+                .toList(),
+          ),
+        );
       }
       widget.onChanged();
     } catch (e) {

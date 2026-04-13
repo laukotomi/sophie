@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sophie/backend.dart';
-import 'package:sophie/services/download_notifications.dart';
 
 class FileDownloadChip extends StatefulWidget {
   final NoteFile file;
@@ -61,30 +60,33 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
 
   Future<void> _download() async {
     if (!await _ensureStoragePermission()) return;
+    if (!mounted) return;
 
     setState(() => _downloading = true);
-    int? notifId;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Downloading ${widget.file.fileName}…'),
+        duration: const Duration(minutes: 10),
+      ),
+    );
     try {
-      notifId = await DownloadNotifications.showProgress(widget.file.fileName);
       final path = '/storage/emulated/0/Download/${widget.file.fileName}';
       await widget.client.downloadFileTo(widget.file.id, path);
       // Notify MediaStore so the file appears in file explorers immediately.
-      await const MethodChannel('sophie/media_scanner')
-          .invokeMethod('scanFile', {'path': path});
-      await DownloadNotifications.showComplete(notifId, widget.file.fileName);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Saved: ${widget.file.fileName}'),
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
+      await const MethodChannel(
+        'sophie/media_scanner',
+      ).invokeMethod('scanFile', {'path': path});
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Saved: ${widget.file.fileName}'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
     } catch (e, st) {
-      debugPrint('Download error: $e\n$st');
-      if (notifId != null) await DownloadNotifications.cancel(notifId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
         SnackBar(
           content: Text('Download failed: $e'),
           duration: const Duration(seconds: 8),

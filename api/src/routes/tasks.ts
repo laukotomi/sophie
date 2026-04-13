@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { requireAuth, type AuthVariables } from '../middleware.js';
 import { createTask, deleteTask, updateTask, setTaskDone } from '../task_queries.js';
+import type { NextTaskInfo } from '../task_queries.js';
 
 const tasks = new Hono<{ Variables: AuthVariables }>();
 
@@ -148,8 +149,9 @@ tasks.patch('/', async (c) => {
         return c.json({ error: 'done (boolean) is required' }, 400);
     }
 
+    let result: NextTaskInfo | null;
     try {
-        await setTaskDone(user.id, body.taskId, body.done);
+        result = await setTaskDone(user.id, body.taskId, body.done);
     } catch (e) {
         console.error('[PATCH /api/tasks] setTaskDone failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -158,6 +160,9 @@ tasks.patch('/', async (c) => {
         return c.json({ error: message }, 500);
     }
 
+    if (result) {
+        return c.json({ nextTaskId: result.nextTaskId, nextDueAt: result.nextDueAt.toISOString() }, 200);
+    }
     return new Response(null, { status: 204 });
 });
 

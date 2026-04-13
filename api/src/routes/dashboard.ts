@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { requireAuth, type AuthVariables } from '../middleware.js';
 import { db } from '../db/index.js';
 import { collaborator, note, noteFiles, noteOrder, task, taskAlert, taskCollaborator, user } from '../db/schema.js';
-import { asc, eq, and, inArray } from 'drizzle-orm';
+import { asc, eq, and, inArray, or, isNull, gt } from 'drizzle-orm';
 
 const dashboard = new Hono<{ Variables: AuthVariables }>();
 
@@ -12,6 +12,7 @@ dashboard.get('/', async (c) => {
     const currentUser = c.get('user');
 
     try {
+        const threeMonthsAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
         const [users, ownedNotes, collaboratedNotes, ownedTasks, collaboratedTasks] = await Promise.all([
             db
                 .select({ id: user.id, name: user.name, email: user.email })
@@ -56,7 +57,10 @@ dashboard.get('/', async (c) => {
                     ownerId: task.owner,
                 })
                 .from(task)
-                .where(eq(task.owner, currentUser.id)),
+                .where(and(
+                    eq(task.owner, currentUser.id),
+                    or(isNull(task.doneAt), gt(task.doneAt, threeMonthsAgo)),
+                )),
 
             db
                 .select({
@@ -71,7 +75,10 @@ dashboard.get('/', async (c) => {
                 })
                 .from(task)
                 .innerJoin(taskCollaborator, eq(taskCollaborator.taskId, task.id))
-                .where(eq(taskCollaborator.userId, currentUser.id)),
+                .where(and(
+                    eq(taskCollaborator.userId, currentUser.id),
+                    or(isNull(task.doneAt), gt(task.doneAt, threeMonthsAgo)),
+                )),
         ]);
 
         const noteIds = [
@@ -180,6 +187,9 @@ dashboard.get('/', async (c) => {
             ...collaboratedTasks.map((t) => ({ ...t, isOwner: false })),
         ]
             .sort((a, b) => {
+                const aDone = a.doneAt != null;
+                const bDone = b.doneAt != null;
+                if (aDone !== bDone) return aDone ? 1 : -1;
                 const aHasDue = a.dueAt != null;
                 const bHasDue = b.dueAt != null;
                 if (!aHasDue && !bHasDue) return b.createdAt.getTime() - a.createdAt.getTime();

@@ -13,7 +13,6 @@ dependencies:
     sdk: flutter
   file_picker: ^10.3.10
   flutter_launcher_icons: ^0.14.4
-  flutter_local_notifications: ^21.0.0
   flutter_timezone: ^5.0.2
   timezone: ^0.11.0
   flutter_markdown_plus: ^1.0.7
@@ -25,6 +24,7 @@ dependencies:
   rrule_generator: ^0.9.9
   table_calendar: ^3.2.0
   permission_handler: ^12.0.1
+  alarm: ^5.2.1
 
 dev_dependencies:
   flutter_test:

@@ -401,7 +401,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                     ? IconButton(
                         icon: const Icon(Icons.clear),
                         tooltip: 'Clear date',
-                        onPressed: () => setState(() => _dueAt = null),
+                        onPressed: () => setState(() {
+                          _dueAt = null;
+                          _rrule = '';
+                        }),
                       )
                     : null,
                 onTap: _pickDateTime,
@@ -492,7 +495,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               }),
               const Divider(),
               const SizedBox(height: 8),
-              RRuleGenerator(
+              Opacity(
+                opacity: _dueAt != null ? 1.0 : 0.4,
+                child: AbsorbPointer(
+                  absorbing: _dueAt == null,
+                  child: RRuleGenerator(
                 config: RRuleGeneratorConfig(
                   headerStyle: const RRuleHeaderStyle(
                     textStyle: TextStyle(
@@ -527,6 +534,8 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 initialRRule: _rrule,
                 withExcludeDates: true,
                 onChange: (rrule) => _rrule = rrule,
+                ),
+                ),
               ),
             ],
           ),

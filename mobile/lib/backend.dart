@@ -328,7 +328,10 @@ class BackendClient {
     return json['id'] as String;
   }
 
-  Future<void> setTaskDone({required String taskId, required bool done}) async {
+  Future<({String nextTaskId, DateTime nextDueAt})?> setTaskDone({
+    required String taskId,
+    required bool done,
+  }) async {
     final response = await http
         .patch(
           Uri.parse('$baseUrl/api/tasks'),
@@ -338,9 +341,17 @@ class BackendClient {
         .timeout(_timeout);
 
     _checkUnauthorized(response.statusCode);
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return (
+        nextTaskId: json['nextTaskId'] as String,
+        nextDueAt: DateTime.parse(json['nextDueAt'] as String).toLocal(),
+      );
+    }
     if (response.statusCode != 204) {
       throw Exception('Failed to update task: ${response.statusCode}');
     }
+    return null;
   }
 
   Future<void> deleteTask({required String taskId}) async {

@@ -1,10 +1,9 @@
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_timezone/flutter_timezone.dart';
+import 'dart:io';
+import 'dart:ui';
+
+import 'package:alarm/alarm.dart';
 import 'package:sophie/models.dart';
-import 'package:sophie/services/notifications_plugin.dart';
 import 'package:sophie/storage.dart';
-import 'package:timezone/data/latest_all.dart' as tz_data;
-import 'package:timezone/timezone.dart' as tz;
 
 /// Manages scheduling of task alert notifications.
 ///
@@ -15,66 +14,14 @@ import 'package:timezone/timezone.dart' as tz;
 /// 3. Call [scheduleForTask] after every task create / update.
 /// 4. Call [cancelForTask] after a task is deleted.
 class AlertNotifications {
-  static const _channelId = 'task_alerts_v4';
-  static const _channelName = 'Task Alerts';
-  static const _channelDesc = 'Task alert reminders';
-
-  /// [alarmClock] uses AlarmManager.setAlarmClock(): exact timing, bypasses
-  /// DND "alarms-only" mode, routes to alarm audio stream.
-  /// Starts as [inexactAllowWhileIdle] and is upgraded once permissions allow.
-  static AndroidScheduleMode _scheduleMode =
-      AndroidScheduleMode.inexactAllowWhileIdle;
-
   // ---------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------
 
-  /// Initialises timezone and the notifications plugin.
-  /// Safe to call from [main] before [runApp] — no Android Activity needed.
+  /// Initialises the alarm package.
+  /// Safe to call from [main] before [runApp].
   static Future<void> init() async {
-    // Configure local timezone so TZDateTime fires at the right wall-clock time.
-    tz_data.initializeTimeZones();
-    final tzInfo = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(tzInfo.identifier));
-
-    await initNotificationsPlugin();
-
-    // If USE_EXACT_ALARM was auto-granted (API 33+ with the manifest entry),
-    // upgrade the schedule mode immediately.
-    final canExact =
-        await sharedNotificationsPlugin
-            .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin
-            >()
-            ?.canScheduleExactNotifications() ??
-        false;
-    if (canExact) {
-      _scheduleMode = AndroidScheduleMode.alarmClock;
-    }
-  }
-
-  /// Requests POST_NOTIFICATIONS and exact-alarm permissions from the user.
-  /// Must be called from a widget [State.initState] or later — requires an
-  /// active Android Activity. Never call before [runApp].
-  static Future<void> requestPermissions() async {
-    final android = sharedNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-    if (android == null) return;
-
-    await android.requestNotificationsPermission();
-
-    // Only prompt for exact-alarm permission if not already granted.
-    final canExact = await android.canScheduleExactNotifications() ?? false;
-    if (!canExact) {
-      await android.requestExactAlarmsPermission();
-    }
-
-    final canExactNow = await android.canScheduleExactNotifications() ?? false;
-    _scheduleMode = canExactNow
-        ? AndroidScheduleMode.alarmClock
-        : AndroidScheduleMode.inexactAllowWhileIdle;
+    await Alarm.init();
   }
 
   /// Cancels any existing alerts for [task] and schedules new ones for every
@@ -90,28 +37,28 @@ class AlertNotifications {
       if (fireAt == null || !fireAt.isAfter(now)) continue;
 
       final id = _notifId(task.id, newIds.length);
-      await sharedNotificationsPlugin.zonedSchedule(
+      final alarmSettings = AlarmSettings(
         id: id,
-        title: task.text,
-        body: null,
-        scheduledDate: tz.TZDateTime.from(fireAt, tz.local),
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            channelDescription: _channelDesc,
-            importance: Importance.max,
-            priority: Priority.max,
-            // Route audio through the alarm stream: plays at alarm volume and
-            // respects "alarms only" DND mode (but not full silent mode).
-            audioAttributesUsage: AudioAttributesUsage.alarm,
-            sound: RawResourceAndroidNotificationSound('task_alert'),
-            // Show on the lock screen without requiring unlock.
-            fullScreenIntent: true,
-          ),
+        dateTime: fireAt,
+        assetAudioPath: 'assets/task_alert.mp3',
+        loopAudio: true,
+        vibrate: true,
+        warningNotificationOnKill: Platform.isIOS,
+        androidFullScreenIntent: false,
+        volumeSettings: VolumeSettings.fade(
+          volume: 0.5,
+          fadeDuration: Duration(seconds: 5),
+          volumeEnforced: false,
         ),
-        androidScheduleMode: _scheduleMode,
+        notificationSettings: NotificationSettings(
+          title: 'Sophie',
+          body: task.text,
+          stopButton: 'Stop the alarm',
+          icon: 'notification_icon',
+          iconColor: Color(0xff862778),
+        ),
       );
+      await Alarm.set(alarmSettings: alarmSettings);
       newIds.add(id);
     }
 
@@ -124,7 +71,7 @@ class AlertNotifications {
   static Future<void> cancelForTask(String taskId) async {
     final count = Storage.getAlertCount(taskId);
     for (var i = 0; i < count; i++) {
-      await sharedNotificationsPlugin.cancel(id: _notifId(taskId, i));
+      await Alarm.stop(_notifId(taskId, i));
     }
     await Storage.removeAlertCount(taskId);
   }
