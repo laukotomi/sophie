@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:sophie/backend.dart';
 import 'package:sophie/screens/home_screen.dart';
 import 'package:sophie/screens/login_screen.dart';
-import 'package:sophie/services/download_notifications.dart';
+import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/storage.dart';
 
 void main() async {
@@ -15,7 +15,7 @@ void main() async {
   Intl.defaultLocale = locale;
   await initializeDateFormatting(locale);
   await Storage.init();
-  await DownloadNotifications.init();
+  await AlertNotifications.init();
   runApp(
     MainApp(
       initialToken: Storage.authToken,
@@ -49,6 +49,7 @@ class _MainAppState extends State<MainApp> {
         onUnauthorized: _onLoggedOut,
       );
     }
+    AlertNotifications.requestPermissions();
   }
 
   void _onLoggedIn(String token, String serverUrl) {
