@@ -14,8 +14,6 @@ tasks.post('/', async (c) => {
         return c.json({ error: 'text is required' }, 400);
     }
 
-    const rrule = typeof body.rrule === 'string' && body.rrule ? body.rrule : null;
-
     let dueAt: Date | null = null;
     if (typeof body.dueAt === 'string' && body.dueAt) {
         dueAt = new Date(body.dueAt);
@@ -23,6 +21,8 @@ tasks.post('/', async (c) => {
             return c.json({ error: 'dueAt is not a valid date' }, 400);
         }
     }
+
+    const rrule = dueAt !== null && typeof body.rrule === 'string' && body.rrule ? body.rrule : null;
 
     const color = typeof body.color === 'string' && body.color ? body.color : null;
 
@@ -91,8 +91,6 @@ tasks.put('/', async (c) => {
         return c.json({ error: 'text is required' }, 400);
     }
 
-    const rrule = typeof body.rrule === 'string' && body.rrule ? body.rrule : null;
-
     let dueAt: Date | null = null;
     if (typeof body.dueAt === 'string' && body.dueAt) {
         dueAt = new Date(body.dueAt);
@@ -100,6 +98,8 @@ tasks.put('/', async (c) => {
             return c.json({ error: 'dueAt is not a valid date' }, 400);
         }
     }
+
+    const rrule = dueAt !== null && typeof body.rrule === 'string' && body.rrule ? body.rrule : null;
 
     const color = typeof body.color === 'string' && body.color ? body.color : null;
 
