@@ -9,6 +9,7 @@ class NotesScreen extends StatefulWidget {
   final DashboardData data;
   final bool usingCache;
   final VoidCallback onRefresh;
+  final bool isActive;
 
   const NotesScreen({
     super.key,
@@ -17,6 +18,7 @@ class NotesScreen extends StatefulWidget {
     required this.data,
     required this.usingCache,
     required this.onRefresh,
+    this.isActive = true,
   });
 
   @override
@@ -224,6 +226,7 @@ class _NotesScreenState extends State<NotesScreen> {
                   client: widget.client,
                   onEdited: widget.onRefresh,
                   scrollController: _scrollController,
+                  isActive: widget.isActive,
                 );
               },
             ),

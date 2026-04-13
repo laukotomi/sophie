@@ -17,8 +17,8 @@ class DownloadNotifications {
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
-          importance: Importance.low,
-          priority: Priority.low,
+          importance: Importance.max,
+          priority: Priority.max,
           ongoing: true,
           showProgress: true,
           indeterminate: true,
@@ -38,8 +38,9 @@ class DownloadNotifications {
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
-          importance: Importance.defaultImportance,
-          priority: Priority.defaultPriority,
+          importance: Importance.max,
+          priority: Priority.max,
+          autoCancel: false,
         ),
       ),
     );
@@ -48,4 +49,3 @@ class DownloadNotifications {
   static Future<void> cancel(int id) =>
       sharedNotificationsPlugin.cancel(id: id);
 }
-

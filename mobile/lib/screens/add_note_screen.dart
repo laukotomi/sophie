@@ -164,6 +164,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     final result = await FilePicker.platform.pickFiles(allowMultiple: true);
     if (result == null || result.files.isEmpty) return;
     final newFiles = result.files.where((f) => f.path != null);
+    if (!mounted) return;
     setState(() {
       for (final f in newFiles) {
         if (!_pickedFiles.any((e) => e.path == f.path)) {
@@ -191,8 +192,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
         state == AppLifecycleState.inactive) {
       _lockHeartbeat?.cancel();
       _lockHeartbeat = null;
-    } else if (state == AppLifecycleState.resumed &&
-        _lockHeartbeat == null) {
+    } else if (state == AppLifecycleState.resumed && _lockHeartbeat == null) {
       _startLockHeartbeat();
     }
   }
@@ -302,7 +302,10 @@ class _AddNoteScreenState extends State<AddNoteScreen>
                 message: 'Could not extend edit lock — will retry',
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 4),
-                  child: Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                  child: Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.orange,
+                  ),
                 ),
               ),
             if (_isEditing)

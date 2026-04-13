@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sophie/backend.dart';
 import 'package:sophie/screens/add_task_screen.dart';
+import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/utils/note_colors.dart';
 import 'package:sophie/widgets/note_chip.dart';
 
@@ -29,11 +30,15 @@ class _TaskCardState extends State<TaskCard> {
 
   Future<void> _toggleDone() async {
     setState(() => _loading = true);
+    final markingDone = widget.task.doneAt == null;
     try {
       await widget.client.setTaskDone(
         taskId: widget.task.id,
-        done: widget.task.doneAt == null,
+        done: markingDone,
       );
+      if (markingDone) {
+        await AlertNotifications.cancelForTask(widget.task.id);
+      }
       widget.onChanged();
     } catch (e) {
       if (mounted) {

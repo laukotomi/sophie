@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:sophie/screens/add_note_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,6 +14,7 @@ class NoteCard extends StatefulWidget {
   final BackendClient client;
   final VoidCallback onEdited;
   final ScrollController scrollController;
+  final bool isActive;
 
   const NoteCard({
     super.key,
@@ -20,6 +23,7 @@ class NoteCard extends StatefulWidget {
     required this.client,
     required this.onEdited,
     required this.scrollController,
+    this.isActive = true,
   });
 
   @override
@@ -32,6 +36,10 @@ class _NoteCardState extends State<NoteCard> {
   double _overlayTop = 0;
   double _overlayRight = 0;
   bool _acquiringLock = false;
+  bool _collapsed = true;
+  bool _overflows = false;
+
+  static const double _maxCollapsedHeight = 300;
 
   @override
   void initState() {
@@ -46,6 +54,16 @@ class _NoteCardState extends State<NoteCard> {
       old.scrollController.removeListener(_onScroll);
       widget.scrollController.addListener(_onScroll);
     }
+    if (!widget.isActive && _overlayController.isShowing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _overlayController.isShowing) _overlayController.hide();
+      });
+    }
+    if (widget.isActive && !old.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onScroll();
+      });
+    }
   }
 
   @override
@@ -55,7 +73,10 @@ class _NoteCardState extends State<NoteCard> {
   }
 
   void _onScroll() {
-    if (!mounted) return;
+    if (!mounted || !widget.isActive) {
+      if (_overlayController.isShowing) _overlayController.hide();
+      return;
+    }
     final canEdit = widget.note.isOwner || widget.note.right == 'edit';
     if (!canEdit) return;
 
@@ -164,10 +185,7 @@ class _NoteCardState extends State<NoteCard> {
       overlayChildBuilder: (ctx) => Positioned(
         top: _overlayTop,
         right: _overlayRight,
-        child: Material(
-          color: Colors.transparent,
-          child: _editButton(ctx),
-        ),
+        child: Material(color: Colors.transparent, child: _editButton(ctx)),
       ),
       child: Card(
         key: _cardKey,
@@ -184,24 +202,8 @@ class _NoteCardState extends State<NoteCard> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: SelectionArea(
-                      child: MarkdownBody(
-                        data: _preserveBlankLines(widget.note.text),
-                        softLineBreak: true,
-                        onTapLink: (_, href, _) {
-                          if (href != null) {
-                            launchUrl(
-                              Uri.parse(href),
-                              mode: LaunchMode.externalApplication,
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                  if (canEdit)
-                    _editButton(context),
+                  Expanded(child: _buildNoteBody()),
+                  if (canEdit) _editButton(context),
                 ],
               ),
               const SizedBox(height: 8),
@@ -269,6 +271,62 @@ class _NoteCardState extends State<NoteCard> {
     );
   }
 
+  Widget _buildNoteBody() {
+    final content = SelectionArea(
+      child: MarkdownBody(
+        data: _preserveBlankLines(widget.note.text),
+        softLineBreak: true,
+        onTapLink: (_, href, _) {
+          if (href != null) {
+            launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+          }
+        },
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _CollapsibleBody(
+          maxHeight: _maxCollapsedHeight,
+          collapsed: _collapsed,
+          onOverflowDetected: (overflows) {
+            if (overflows != _overflows && mounted) {
+              setState(() => _overflows = overflows);
+            }
+          },
+          child: content,
+        ),
+        if (_overflows)
+          GestureDetector(
+            onTap: () => setState(() => _collapsed = !_collapsed),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _collapsed ? 'Show more' : 'Show less',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Icon(
+                    _collapsed
+                        ? Icons.keyboard_arrow_down
+                        : Icons.keyboard_arrow_up,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   String _formatDate(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt);
@@ -288,4 +346,103 @@ class _NoteCardState extends State<NoteCard> {
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');
+}
+
+/// Clips [child] to [maxHeight] when [collapsed], and calls [onOverflowDetected]
+/// post-frame whenever the child's natural height exceeds [maxHeight].
+class _CollapsibleBody extends SingleChildRenderObjectWidget {
+  const _CollapsibleBody({
+    required this.maxHeight,
+    required this.collapsed,
+    required this.onOverflowDetected,
+    required Widget child,
+  }) : super(child: child);
+
+  final double maxHeight;
+  final bool collapsed;
+  final void Function(bool overflows) onOverflowDetected;
+
+  @override
+  _RenderCollapsibleBody createRenderObject(BuildContext context) =>
+      _RenderCollapsibleBody(
+        maxHeight: maxHeight,
+        collapsed: collapsed,
+        onOverflowDetected: onOverflowDetected,
+      );
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderCollapsibleBody renderObject,
+  ) {
+    renderObject
+      ..maxHeight = maxHeight
+      ..collapsed = collapsed
+      ..onOverflowDetected = onOverflowDetected;
+  }
+}
+
+class _RenderCollapsibleBody extends RenderProxyBox {
+  _RenderCollapsibleBody({
+    required double maxHeight,
+    required bool collapsed,
+    required void Function(bool) onOverflowDetected,
+  }) : _maxHeight = maxHeight,
+       _collapsed = collapsed,
+       _onOverflowDetected = onOverflowDetected;
+
+  double _maxHeight;
+  double get maxHeight => _maxHeight;
+  set maxHeight(double v) {
+    if (_maxHeight == v) return;
+    _maxHeight = v;
+    markNeedsLayout();
+  }
+
+  bool _collapsed;
+  bool get collapsed => _collapsed;
+  set collapsed(bool v) {
+    if (_collapsed == v) return;
+    _collapsed = v;
+    markNeedsLayout();
+  }
+
+  void Function(bool) _onOverflowDetected;
+  // ignore: avoid_setters_without_getters
+  set onOverflowDetected(void Function(bool) v) => _onOverflowDetected = v;
+
+  @override
+  void performLayout() {
+    // Layout child unconstrained vertically to measure its natural height.
+    child!.layout(
+      constraints.copyWith(maxHeight: double.infinity),
+      parentUsesSize: true,
+    );
+    final naturalHeight = child!.size.height;
+    final overflows = naturalHeight > _maxHeight;
+
+    // Defer notification to avoid calling setState during layout.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _onOverflowDetected(overflows);
+    });
+
+    final displayHeight = _collapsed
+        ? naturalHeight.clamp(0.0, _maxHeight)
+        : naturalHeight;
+    size = constraints.constrain(Size(child!.size.width, displayHeight));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (_collapsed && child!.size.height > size.height) {
+      context.pushClipRect(
+        needsCompositing,
+        offset,
+        Offset.zero & size,
+        (ctx, off) => super.paint(ctx, off),
+      );
+    } else {
+      super.paint(context, offset);
+    }
+  }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:sophie/backend.dart';
 import 'package:sophie/services/download_notifications.dart';
 
@@ -16,22 +17,79 @@ class FileDownloadChip extends StatefulWidget {
 class _FileDownloadChipState extends State<FileDownloadChip> {
   bool _downloading = false;
 
+  Future<bool> _ensureStoragePermission() async {
+    // On Android 11+ (API 30+), WRITE_EXTERNAL_STORAGE is revoked for the
+    // public Downloads folder; MANAGE_EXTERNAL_STORAGE is required instead.
+    // permission_handler returns PermissionStatus.granted on platforms/API levels
+    // where a given permission doesn't apply, so requesting
+    // manageExternalStorage is safe on all versions.
+    final statuses = await [
+      Permission.storage,
+      Permission.manageExternalStorage,
+    ].request();
+
+    final granted = statuses.values.any((s) => s.isGranted);
+    if (granted) return true;
+
+    final permanentlyDenied = statuses.values.any((s) => s.isPermanentlyDenied);
+    if (permanentlyDenied && mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Storage permission required'),
+          content: const Text(
+            'Please grant storage access in Settings to download files.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                openAppSettings();
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
+      );
+    }
+    return false;
+  }
+
   Future<void> _download() async {
+    if (!await _ensureStoragePermission()) return;
+
     setState(() => _downloading = true);
-    final notifId = await DownloadNotifications.showProgress(
-      widget.file.fileName,
-    );
+    int? notifId;
     try {
-      final dir = await getExternalStorageDirectory();
-      final path = '${dir!.path}/${widget.file.fileName}';
+      notifId = await DownloadNotifications.showProgress(widget.file.fileName);
+      final path = '/storage/emulated/0/Download/${widget.file.fileName}';
       await widget.client.downloadFileTo(widget.file.id, path);
+      // Notify MediaStore so the file appears in file explorers immediately.
+      await const MethodChannel('sophie/media_scanner')
+          .invokeMethod('scanFile', {'path': path});
       await DownloadNotifications.showComplete(notifId, widget.file.fileName);
-    } catch (_) {
-      await DownloadNotifications.cancel(notifId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Saved: ${widget.file.fileName}'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e, st) {
+      debugPrint('Download error: $e\n$st');
+      if (notifId != null) await DownloadNotifications.cancel(notifId);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Failed to download file')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Download failed: $e'),
+          duration: const Duration(seconds: 8),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _downloading = false);
     }
@@ -55,9 +113,16 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
             color: theme.colorScheme.onSurface,
           ),
           const SizedBox(width: 4),
-          Text(
-            widget.file.fileName,
-            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              widget.file.fileName,
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurface,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           const SizedBox(width: 4),
           _downloading

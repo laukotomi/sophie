@@ -95,6 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 data: data,
                 usingCache: _usingCache,
                 onRefresh: _refresh,
+                isActive: _selectedIndex == 0,
               ),
               TasksScreen(
                 data: data,
