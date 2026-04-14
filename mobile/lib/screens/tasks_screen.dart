@@ -10,6 +10,7 @@ class TasksScreen extends StatefulWidget {
   final BackendClient client;
   final VoidCallback onLoggedOut;
   final Future<void> Function() onRefresh;
+  final bool usingCache;
 
   const TasksScreen({
     super.key,
@@ -17,6 +18,7 @@ class TasksScreen extends StatefulWidget {
     required this.client,
     required this.onLoggedOut,
     required this.onRefresh,
+    this.usingCache = false,
   });
 
   @override
@@ -127,6 +129,14 @@ class _TasksScreenState extends State<TasksScreen> {
               )
             : const Text('Sophie Tasks'),
         actions: [
+          if (widget.usingCache)
+            Tooltip(
+              message: 'Showing cached data — could not reach server',
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4),
+                child: Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Log out',

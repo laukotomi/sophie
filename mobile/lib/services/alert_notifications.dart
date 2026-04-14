@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:alarm/alarm.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:sophie/models.dart';
 import 'package:sophie/storage.dart';
 
@@ -22,6 +23,16 @@ class AlertNotifications {
   /// Safe to call from [main] before [runApp].
   static Future<void> init() async {
     await Alarm.init();
+  }
+
+  /// Requests the permissions required for alarms and notifications.
+  /// Must be called from a widget with a live Activity (e.g. [State.initState]).
+  static Future<void> requestPermissions() async {
+    await Permission.notification.request();
+    if (Platform.isAndroid) {
+      await Permission.scheduleExactAlarm.request();
+      await Permission.ignoreBatteryOptimizations.request();
+    }
   }
 
   /// Cancels any existing alerts for [task] and schedules new ones for every

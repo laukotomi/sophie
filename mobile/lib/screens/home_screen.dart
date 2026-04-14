@@ -102,6 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 client: widget.client,
                 onLoggedOut: widget.onLoggedOut,
                 onRefresh: () async => _refresh(),
+                usingCache: _usingCache,
               ),
             ],
           ),

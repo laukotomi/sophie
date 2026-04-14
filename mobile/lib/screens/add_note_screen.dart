@@ -323,22 +323,51 @@ class _AddNoteScreenState extends State<AddNoteScreen>
                     : () async {
                         final confirmed = await showDialog<bool>(
                           context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Delete note'),
-                            content: const Text(
-                              'This cannot be undone. Are you sure?',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(ctx).pop(false),
-                                child: const Text('Cancel'),
+                          builder: (ctx) {
+                            final confirmController = TextEditingController();
+                            return StatefulBuilder(
+                              builder: (ctx, setState) => AlertDialog(
+                                title: const Text('Delete note'),
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'This cannot be undone. Type "yes" to confirm.',
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextField(
+                                      controller: confirmController,
+                                      autofocus: true,
+                                      decoration: const InputDecoration(
+                                        hintText: 'yes',
+                                        border: OutlineInputBorder(),
+                                        isDense: true,
+                                      ),
+                                      onChanged: (_) => setState(() {}),
+                                    ),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(ctx).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed:
+                                        confirmController.text
+                                                .trim()
+                                                .toLowerCase() ==
+                                            'yes'
+                                        ? () => Navigator.of(ctx).pop(true)
+                                        : null,
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
                               ),
-                              FilledButton(
-                                onPressed: () => Navigator.of(ctx).pop(true),
-                                child: const Text('Delete'),
-                              ),
-                            ],
-                          ),
+                            );
+                          },
                         );
                         if (confirmed != true || !mounted) return;
                         setState(() => _deleting = true);

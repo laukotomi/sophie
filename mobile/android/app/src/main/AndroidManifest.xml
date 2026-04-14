@@ -8,6 +8,7 @@
     <!-- SCHEDULE_EXACT_ALARM: for API 31-32, requires user consent via requestExactAlarmsPermission() -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28"/>
     <!-- Required to write to public Downloads on Android 11+ -->

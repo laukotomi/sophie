@@ -49,6 +49,8 @@ class _MainAppState extends State<MainApp> {
         onUnauthorized: _onLoggedOut,
       );
     }
+
+    AlertNotifications.requestPermissions();
   }
 
   void _onLoggedIn(String token, String serverUrl) {

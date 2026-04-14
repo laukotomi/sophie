@@ -84,7 +84,7 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
           duration: const Duration(seconds: 4),
         ),
       );
-    } catch (e, st) {
+    } catch (e) {
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         SnackBar(
