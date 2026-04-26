@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sophie/backend.dart';
 import 'package:sophie/screens/notes_screen.dart';
 import 'package:sophie/screens/tasks_screen.dart';
@@ -19,14 +21,33 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const _navChannel = MethodChannel('sophie/navigation');
+  static const _navEvents = EventChannel('sophie/navigation/events');
+
   int _selectedIndex = 0;
   late Future<DashboardData> _dataFuture;
   bool _usingCache = false;
+  StreamSubscription? _navEventSub;
 
   @override
   void initState() {
     super.initState();
     _dataFuture = _loadData();
+    // Background case: app already running, widget tapped → onNewIntent fires.
+    _navEventSub = _navEvents.receiveBroadcastStream().listen((route) {
+      if (route == 'tasks' && mounted) setState(() => _selectedIndex = 1);
+    });
+    // Cold-start case: app launched from widget.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final route = await _navChannel.invokeMethod<String>('getInitialRoute');
+      if (route == 'tasks' && mounted) setState(() => _selectedIndex = 1);
+    });
+  }
+
+  @override
+  void dispose() {
+    _navEventSub?.cancel();
+    super.dispose();
   }
 
   Future<DashboardData> _loadData() async {

@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sophie/models.dart';
 
@@ -19,6 +21,36 @@ class Storage {
 
   static Future<void> saveDashboardData(DashboardData data) async {
     await _prefs.setString(dashboardCacheKey, jsonEncode(data.toJson()));
+    if (Platform.isAndroid) {
+      await _pushTasksToWidget(data.tasks);
+    }
+  }
+
+  static Future<void> _pushTasksToWidget(List<Task> tasks) async {
+    final pending = tasks.where((t) => t.doneAt == null).toList()
+      ..sort((a, b) {
+        if (a.dueAt == null && b.dueAt == null) {
+          return b.createdAt.compareTo(a.createdAt);
+        }
+        if (a.dueAt == null) return -1;
+        if (b.dueAt == null) return 1;
+        return a.dueAt!.compareTo(b.dueAt!);
+      });
+    final json = jsonEncode(
+      pending
+          .map(
+            (t) => {
+              'id': t.id,
+              'text': t.text,
+              'dueAt': t.dueAt?.toIso8601String(),
+            },
+          )
+          .toList(),
+    );
+    await HomeWidget.saveWidgetData<String>('tasks_json', json);
+    await HomeWidget.updateWidget(
+      qualifiedAndroidName: 'com.example.sophie.TasksWidgetReceiver',
+    );
   }
 
   static Future<void> clear() async {

@@ -193,8 +193,8 @@ dashboard.get('/', async (c) => {
                 const aHasDue = a.dueAt != null;
                 const bHasDue = b.dueAt != null;
                 if (!aHasDue && !bHasDue) return b.createdAt.getTime() - a.createdAt.getTime();
-                if (!aHasDue) return -1;
-                if (!bHasDue) return 1;
+                if (!aHasDue) return 1;
+                if (!bHasDue) return -1;
                 const dueDiff = a.dueAt!.getTime() - b.dueAt!.getTime();
                 if (dueDiff !== 0) return dueDiff;
                 return b.createdAt.getTime() - a.createdAt.getTime();
