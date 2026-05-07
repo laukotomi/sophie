@@ -187,16 +187,14 @@ dashboard.get('/', async (c) => {
             ...collaboratedTasks.map((t) => ({ ...t, isOwner: false })),
         ]
             .sort((a, b) => {
-                const aDone = a.doneAt != null;
-                const bDone = b.doneAt != null;
-                if (aDone !== bDone) return aDone ? 1 : -1;
-                const aHasDue = a.dueAt != null;
-                const bHasDue = b.dueAt != null;
-                if (!aHasDue && !bHasDue) return b.createdAt.getTime() - a.createdAt.getTime();
-                if (!aHasDue) return 1;
-                if (!bHasDue) return -1;
-                const dueDiff = a.dueAt!.getTime() - b.dueAt!.getTime();
-                if (dueDiff !== 0) return dueDiff;
+                if (a.doneAt && !b.doneAt) return 1;
+                if (!a.doneAt && b.doneAt) return -1;
+                if (!a.dueAt && b.dueAt) return -1;
+                if (a.dueAt && !b.dueAt) return 1;
+                if (a.dueAt && b.dueAt) {
+                    const dueDiff = a.dueAt!.getTime() - b.dueAt!.getTime();
+                    if (dueDiff !== 0) return dueDiff;
+                }
                 return b.createdAt.getTime() - a.createdAt.getTime();
             })
             .map((t) => ({

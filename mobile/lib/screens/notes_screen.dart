@@ -172,6 +172,7 @@ class _NotesScreenState extends State<NotesScreen> {
               builder: (_) => AddNoteScreen(
                 client: widget.client,
                 users: widget.data.users,
+                currentUserId: widget.data.user.id,
               ),
             ),
           );
@@ -223,6 +224,7 @@ class _NotesScreenState extends State<NotesScreen> {
                 return NoteCard(
                   note: note,
                   users: widget.data.users,
+                  currentUserId: widget.data.user.id,
                   client: widget.client,
                   onEdited: widget.onRefresh,
                   scrollController: _scrollController,

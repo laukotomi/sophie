@@ -23,7 +23,6 @@
         "rrule": "^2.8.1"
     },
     "devDependencies": {
-        "@better-auth/cli": "~1.4.21",
         "@types/node": "^24",
         "drizzle-kit": "^0.31.8",
         "tsx": "^4.19.4",

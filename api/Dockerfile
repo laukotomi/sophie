@@ -15,6 +15,9 @@ RUN npm run build
 
 FROM node:alpine AS runner
 
+ARG VERSION=dev
+LABEL org.opencontainers.image.version="${VERSION}"
+
 WORKDIR /app
 
 COPY package.json package-lock.json* ./

@@ -11,6 +11,7 @@ import 'package:sophie/widgets/note_chip.dart';
 class NoteCard extends StatefulWidget {
   final Note note;
   final List<AppUser> users;
+  final String currentUserId;
   final BackendClient client;
   final VoidCallback onEdited;
   final ScrollController scrollController;
@@ -20,6 +21,7 @@ class NoteCard extends StatefulWidget {
     super.key,
     required this.note,
     required this.users,
+    required this.currentUserId,
     required this.client,
     required this.onEdited,
     required this.scrollController,
@@ -147,6 +149,7 @@ class _NoteCardState extends State<NoteCard> {
         builder: (_) => AddNoteScreen(
           client: widget.client,
           users: widget.users,
+          currentUserId: widget.currentUserId,
           existingNote: widget.note,
         ),
       ),

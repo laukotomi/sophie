@@ -10,6 +10,7 @@ import 'package:sophie/widgets/note_settings_dialog.dart';
 class AddNoteScreen extends StatefulWidget {
   final BackendClient client;
   final List<AppUser> users;
+  final String currentUserId;
   // When non-null the screen is in edit mode
   final Note? existingNote;
 
@@ -17,6 +18,7 @@ class AddNoteScreen extends StatefulWidget {
     super.key,
     required this.client,
     required this.users,
+    required this.currentUserId,
     this.existingNote,
   });
 
@@ -135,6 +137,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
 
   Future<void> _openAddCollaborator() async {
     final alreadyAdded = _collaborators.map((c) => c.$1.id).toSet();
+    alreadyAdded.add(widget.currentUserId);
     if (widget.existingNote != null) {
       alreadyAdded.add(widget.existingNote!.ownerId);
     }

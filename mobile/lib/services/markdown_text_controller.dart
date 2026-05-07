@@ -24,16 +24,20 @@ class MarkdownTextController extends TextEditingController {
   @override
   set value(TextEditingValue newValue) {
     final old = value;
-    final cursor = newValue.selection.baseOffset;
+    final cursor = newValue.selection.isCollapsed
+        ? newValue.selection.baseOffset
+        : -1;
+
     // Detect a newline being inserted
-    if (newValue.text.length == old.text.length + 1 &&
-        cursor > 0 &&
+    if (cursor != -1 &&
+        newValue.text.length == old.text.length + 1 &&
         newValue.text[cursor - 1] == '\n') {
       final textBefore = newValue.text.substring(0, cursor);
       // Guard against cursor == 1 (newline inserted at position 0): cursor - 2
       // would be -1, which causes lastIndexOf to throw a RangeError in Dart.
-      final lineStart =
-          cursor >= 2 ? textBefore.lastIndexOf('\n', cursor - 2) + 1 : 0;
+      final lineStart = cursor >= 2
+          ? textBefore.lastIndexOf('\n', cursor - 2) + 1
+          : 0;
       final prevLine = textBefore.substring(lineStart, cursor - 1);
       final prefix = _nextPrefix(prevLine);
       if (prefix != null) {
@@ -53,10 +57,7 @@ class MarkdownTextController extends TextEditingController {
           );
           return;
         }
-        final inserted =
-            newValue.text.substring(0, cursor) +
-            prefix +
-            newValue.text.substring(cursor);
+        final inserted = textBefore + prefix + newValue.text.substring(cursor);
         super.value = TextEditingValue(
           text: inserted,
           selection: TextSelection.collapsed(offset: cursor + prefix.length),
