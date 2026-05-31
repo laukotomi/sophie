@@ -1,0 +1,93 @@
+name: Deploy api
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: eg. 1.0.0
+        type: string
+        required: true
+
+      description:
+        description: What's new?
+        type: string
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./api
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build
+        run: |
+          mkdir build
+          cp package*.json build/
+          cp -r src build/
+          cp -r scripts build/
+          cp tsconfig.json build/
+          cd build
+
+          npm ci
+          sed -i 's|\.\./src/|\.\./dist/|g' scripts/*.ts
+          npm run build
+          cd ..
+
+      - name: Start building debian package
+        uses: http://forgejo.lan/tomi/forgejo-actions/deb-start@v1.0.3
+        with:
+          wdir: api
+          name: sophie
+          version: ${{ github.event.inputs.version }}
+          description: Sophie API
+          exec: /usr/lib/sophie/entrypoint.sh
+          depends: nodejs
+
+      - name: Create lib
+        run: |
+          ls -la
+          pwd
+
+          cp package*.json deb-sophie/usr/lib/sophie/
+          npm --prefix deb-sophie/usr/lib/sophie ci --omit=dev
+          npm --prefix deb-sophie/usr/lib/sophie install tsx drizzle-kit
+
+          mv build/dist deb-sophie/usr/lib/sophie/
+          mv build/scripts deb-sophie/usr/lib/sophie/
+
+          cp drizzle.config.ts deb-sophie/usr/lib/sophie/
+          mkdir deb-sophie/usr/lib/sophie/drizzle
+          cp -r drizzle deb-sophie/usr/lib/sophie/drizzle
+
+          cp entrypoint.sh deb-sophie/usr/lib/sophie/
+          chmod +x deb-sophie/usr/lib/sophie/entrypoint.sh
+
+      - name: Build and push
+        uses: http://forgejo.lan/tomi/forgejo-actions/deb-create@v1.0.3
+        with:
+          wdir: api
+          name: sophie
+          version: ${{ github.event.inputs.version }}
+          repo_user: ${{ secrets.USER }}
+          repo_pass: ${{ secrets.PASSWORD }}
+
+      - name: Create tag
+        run: |
+          git tag -f v${{ github.event.inputs.version }}
+          git push --force origin v${{ github.event.inputs.version }}
+
+      # - name: Create Gitea Release
+      #   uses: akkuman/gitea-release-action@v1
+      #   with:
+      #     name: Release Sophie ${{ github.event.inputs.version }}
+      #     tag_name: v${{ github.event.inputs.version }}
+      #     body: ${{ github.event.inputs.description }}
+      #     draft: false
+      #     prerelease: false
