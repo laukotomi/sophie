@@ -64,7 +64,7 @@ jobs:
 
           cp drizzle.config.ts deb-sophie/usr/lib/sophie/
           mkdir deb-sophie/usr/lib/sophie/drizzle
-          cp -r drizzle deb-sophie/usr/lib/sophie/drizzle
+          cp -r drizzle deb-sophie/usr/lib/sophie/
 
           cp entrypoint.sh deb-sophie/usr/lib/sophie/
           chmod +x deb-sophie/usr/lib/sophie/entrypoint.sh
