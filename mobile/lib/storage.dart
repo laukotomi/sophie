@@ -10,6 +10,7 @@ class Storage {
   static const String serverUrlKey = 'server_url';
   static const String dashboardCacheKey = 'cached_dashboard';
   static const String _alertCountsKey = 'alert_notif_counts';
+  static const String _alarmTaskMapKey = 'alarm_task_map';
   static late SharedPreferences _prefs;
 
   static String? get authToken => _prefs.getString(authTokenKey);
@@ -98,5 +99,29 @@ class Storage {
     final map = Map<String, dynamic>.from(jsonDecode(raw) as Map)
       ..remove(taskId);
     await _prefs.setString(_alertCountsKey, jsonEncode(map));
+  }
+
+  static Future<void> setTaskIdForAlarm(int alarmId, String taskId) async {
+    final raw = _prefs.getString(_alarmTaskMapKey);
+    final map = raw != null
+        ? Map<String, dynamic>.from(jsonDecode(raw) as Map)
+        : <String, dynamic>{};
+    map['$alarmId'] = taskId;
+    await _prefs.setString(_alarmTaskMapKey, jsonEncode(map));
+  }
+
+  static String? getTaskIdForAlarm(int alarmId) {
+    final raw = _prefs.getString(_alarmTaskMapKey);
+    if (raw == null) return null;
+    final map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    return map['$alarmId'] as String?;
+  }
+
+  static Future<void> removeTaskIdForAlarm(int alarmId) async {
+    final raw = _prefs.getString(_alarmTaskMapKey);
+    if (raw == null) return;
+    final map = Map<String, dynamic>.from(jsonDecode(raw) as Map)
+      ..remove('$alarmId');
+    await _prefs.setString(_alarmTaskMapKey, jsonEncode(map));
   }
 }

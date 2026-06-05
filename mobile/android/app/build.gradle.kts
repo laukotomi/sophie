@@ -53,6 +53,13 @@ android {
         }
     }
 }
+
+configurations.configureEach {
+    resolutionStrategy {
+        force("androidx.glance:glance-appwidget:1.1.1")
+    }
+}
+
 dependencies {
     implementation("androidx.glance:glance-appwidget:1.1.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
