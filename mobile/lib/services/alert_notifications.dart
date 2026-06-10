@@ -3,12 +3,10 @@ import 'dart:convert';
 import 'dart:ui';
 
 import 'package:alarm/alarm.dart';
-import 'package:alarm/model/alarm_settings.dart';
 import 'package:alarm/utils/alarm_set.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sophie/backend.dart';
-import 'package:sophie/models.dart';
 import 'package:sophie/storage.dart';
 
 /// Manages scheduling of task alert notifications.
@@ -21,8 +19,10 @@ import 'package:sophie/storage.dart';
 /// 4. Call [cancelForTask] after a task is deleted.
 class AlertNotifications {
   static const _actionsChannelKey = 'task_alarm_actions';
+  static const _snoozeChannelKey = 'task_snooze_alarm';
   static const _stopActionKey = 'STOP_ALARM';
   static const _doneActionKey = 'MARK_DONE';
+  static const _snoozeActionKey = 'SNOOZE';
   static Set<int> _knownRingingIds = <int>{};
 
   // ---------------------------------------------------------------------------
@@ -82,13 +82,30 @@ class AlertNotifications {
           iconColor: Color(0xff862778),
         ),
       );
+
       await Alarm.set(alarmSettings: alarmSettings);
-      await Storage.setTaskIdForAlarm(id, task.id);
       newIds.add(id);
     }
 
     if (newIds.isNotEmpty) {
       await Storage.setAlertCount(task.id, newIds.length);
+    }
+  }
+
+  /// Cancels all existing alarms (derived from the old cached data) then
+  /// reschedules from [freshTasks]. Call this after every dashboard refresh.
+  static Future<void> rescheduleAll(List<Task> freshTasks) async {
+    // Cancel alarms for every previously tracked task, including ones that may
+    // have been deleted from the server since the last launch.
+    final cachedData = Storage.getDashboardData();
+    if (cachedData != null) {
+      for (final task in cachedData.tasks) {
+        await cancelForTask(task.id);
+      }
+    }
+    // Schedule fresh alarms for all pending tasks.
+    for (final task in freshTasks.where((t) => t.doneAt == null)) {
+      await scheduleForTask(task);
     }
   }
 
@@ -98,7 +115,6 @@ class AlertNotifications {
     for (var i = 0; i < count; i++) {
       final alarmId = _notifId(taskId, i);
       await Alarm.stop(alarmId);
-      await Storage.removeTaskIdForAlarm(alarmId);
       await AwesomeNotifications().dismiss(_actionNotifId(alarmId));
     }
     await Storage.removeAlertCount(taskId);
@@ -146,6 +162,16 @@ class AlertNotifications {
         playSound: false,
         enableVibration: false,
       ),
+      NotificationChannel(
+        channelGroupKey: 'sophie_tasks',
+        channelKey: _snoozeChannelKey,
+        channelName: 'Task snooze reminders',
+        channelDescription: 'Snoozed task reminders',
+        importance: NotificationImportance.Max,
+        playSound: true,
+        enableVibration: true,
+        defaultPrivacy: NotificationPrivacy.Public,
+      ),
     ]);
 
     AwesomeNotifications().setListeners(
@@ -166,12 +192,22 @@ class AlertNotifications {
     final startedIds = currentIds.difference(_knownRingingIds);
     final stoppedIds = _knownRingingIds.difference(currentIds);
 
+    await _handleStartedAlarms(startedIds, currentById);
+    await _handleStoppedAlarms(stoppedIds);
+
+    _knownRingingIds = currentIds;
+  }
+
+  static Future _handleStartedAlarms(
+    Set<int> startedIds,
+    Map<int, AlarmSettings> currentById,
+  ) async {
     for (final alarmId in startedIds) {
       final alarm = currentById[alarmId];
       if (alarm == null) continue;
 
-      final payloadTaskId = _taskIdFromPayload(alarm.payload);
-      final taskId = payloadTaskId ?? Storage.getTaskIdForAlarm(alarmId);
+      final taskId = _taskIdFromPayload(alarm.payload);
+      if (taskId == null) continue;
 
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
@@ -179,32 +215,24 @@ class AlertNotifications {
           channelKey: _actionsChannelKey,
           title: 'Sophie',
           body: alarm.notificationSettings.body,
-          payload: {
-            'alarmId': '$alarmId',
-            if (taskId != null) 'taskId': taskId,
-          },
+          payload: {'alarmId': '$alarmId', 'taskId': taskId},
           autoDismissible: false,
           wakeUpScreen: true,
           locked: true,
         ),
         actionButtons: [
-          NotificationActionButton(
-            key: _stopActionKey,
-            label: 'Stop',
-          ),
-          NotificationActionButton(
-            key: _doneActionKey,
-            label: 'Mark done',
-          ),
+          NotificationActionButton(key: _stopActionKey, label: 'Stop'),
+          NotificationActionButton(key: _doneActionKey, label: 'Mark done'),
+          NotificationActionButton(key: _snoozeActionKey, label: 'Snooze'),
         ],
       );
     }
+  }
 
+  static Future _handleStoppedAlarms(Set<int> stoppedIds) async {
     for (final alarmId in stoppedIds) {
       await AwesomeNotifications().dismiss(_actionNotifId(alarmId));
     }
-
-    _knownRingingIds = currentIds;
   }
 
   static String? _taskIdFromPayload(String? payload) {
@@ -222,38 +250,74 @@ class AlertNotifications {
 
   @pragma('vm:entry-point')
   static Future<void> _onNotificationAction(ReceivedAction action) async {
-    await Storage.init();
-
     final alarmId = int.tryParse(action.payload?['alarmId'] ?? '');
-    final taskId =
-        action.payload?['taskId'] ??
-        (alarmId != null ? Storage.getTaskIdForAlarm(alarmId) : null);
-
     if (alarmId == null) return;
 
     if (action.buttonKeyPressed == _stopActionKey) {
-      await Alarm.stop(alarmId);
+      try { await Alarm.stop(alarmId); } catch (_) {}
       await AwesomeNotifications().dismiss(_actionNotifId(alarmId));
       return;
     }
 
-    if (action.buttonKeyPressed == _doneActionKey) {
-      await Alarm.stop(alarmId);
+    if (action.buttonKeyPressed == _snoozeActionKey) {
+      try { await Alarm.stop(alarmId); } catch (_) {}
       await AwesomeNotifications().dismiss(_actionNotifId(alarmId));
+      await _scheduleSnoozeNotification(
+        alarmId,
+        action.payload?['taskId'],
+        action.body,
+      );
+      return;
+    }
+
+    if (action.buttonKeyPressed == _doneActionKey) {
+      try { await Alarm.stop(alarmId); } catch (_) {}
+      await AwesomeNotifications().dismiss(_actionNotifId(alarmId));
+      final taskId = action.payload?['taskId'];
       if (taskId != null) {
         await _markTaskDone(taskId);
       }
     }
   }
 
+  static Future<void> _scheduleSnoozeNotification(
+    int alarmId,
+    String? taskId,
+    String? body,
+  ) async {
+    final fireAt = DateTime.now().add(const Duration(minutes: 15));
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: _actionNotifId(alarmId),
+        channelKey: _snoozeChannelKey,
+        title: 'Sophie',
+        body: body,
+        payload: {'alarmId': '$alarmId', if (taskId != null) 'taskId': taskId},
+        autoDismissible: false,
+        wakeUpScreen: true,
+        locked: true,
+        criticalAlert: true,
+        category: NotificationCategory.Alarm,
+      ),
+      schedule: NotificationCalendar.fromDate(date: fireAt),
+      actionButtons: [
+        NotificationActionButton(key: _doneActionKey, label: 'Mark done'),
+        NotificationActionButton(key: _snoozeActionKey, label: 'Snooze'),
+      ],
+    );
+  }
+
   static Future<void> _markTaskDone(String taskId) async {
+    await Storage.init();
     final serverUrl = Storage.serverUrl;
     final token = Storage.authToken;
     if (serverUrl == null || token == null) return;
 
     final client = BackendClient(baseUrl: serverUrl, token: token);
     try {
-      final cachedTask = Storage.getDashboardData()?.tasks.where((t) => t.id == taskId).firstOrNull;
+      final cachedTask = Storage.getDashboardData()?.tasks
+          .where((t) => t.id == taskId)
+          .firstOrNull;
       final next = await client.setTaskDone(taskId: taskId, done: true);
       await cancelForTask(taskId);
 

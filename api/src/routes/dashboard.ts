@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { collaborator, note, noteFiles, noteOrder, task, taskAlert, taskCollaborator, user } from '../db/schema.js';
 import { asc, eq, and, inArray, or, isNull, gt } from 'drizzle-orm';
 
+
 const dashboard = new Hono<{ Variables: AuthVariables }>();
 
 dashboard.use(requireAuth);
@@ -192,7 +193,7 @@ dashboard.get('/', async (c) => {
                 if (!a.dueAt && b.dueAt) return -1;
                 if (a.dueAt && !b.dueAt) return 1;
                 if (a.dueAt && b.dueAt) {
-                    const dueDiff = a.dueAt!.getTime() - b.dueAt!.getTime();
+                    const dueDiff = a.dueAt.localeCompare(b.dueAt);
                     if (dueDiff !== 0) return dueDiff;
                 }
                 return b.createdAt.getTime() - a.createdAt.getTime();

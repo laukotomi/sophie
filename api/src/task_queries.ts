@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { task, taskCollaborator, taskAlert } from './db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import rrulePkg from 'rrule';
+import { parseDateISOString } from './utils.js';
 const { RRule } = rrulePkg;
 
 function getNextOccurrence(rruleStr: string, currentDueAt: Date): Date | null {
@@ -24,7 +25,7 @@ export async function createTask(
     userId: string,
     text: string,
     rrule: string | null,
-    dueAt: Date | null,
+    dueAt: string,
     color: string | null,
     collaboratorIds: string[],
     alerts: AlertInput[],
@@ -76,7 +77,7 @@ export async function updateTask(
     taskId: string,
     text: string,
     rrule: string | null,
-    dueAt: Date | null,
+    dueAt: string,
     color: string | null,
     collaboratorIds: string[],
     alerts: AlertInput[],
@@ -154,7 +155,7 @@ export async function setTaskDone(
 
     if (!done || !existing.rrule || !existing.dueAt) return null;
 
-    const nextDueAt = getNextOccurrence(existing.rrule, existing.dueAt);
+    const nextDueAt = getNextOccurrence(existing.rrule, parseDateISOString(existing.dueAt));
     if (!nextDueAt) return null;
 
     const [collabs, alertRows] = await Promise.all([
@@ -174,7 +175,7 @@ export async function setTaskDone(
         existing.owner,
         existing.text,
         existing.rrule,
-        nextDueAt,
+        nextDueAt.toISOString(),
         existing.color,
         collabs.map((c) => c.userId),
         alerts,

@@ -125,7 +125,7 @@ class TaskAlert {
   factory TaskAlert.fromJson(Map<String, dynamic> json) => TaskAlert(
     id: json['id'] as int,
     alertAt: json['alertAt'] != null
-        ? DateTime.parse(json['alertAt'] as String).toLocal()
+        ? DateTime.parse(json['alertAt'] as String)
         : null,
     timeBefore: json['timeBefore'] as String?,
   );
@@ -189,7 +189,7 @@ class Task {
     rrule: json['rrule'] as String?,
     color: json['color'] as String?,
     dueAt: json['dueAt'] != null
-        ? DateTime.parse(json['dueAt'] as String).toLocal()
+        ? DateTime.parse(json['dueAt'] as String)
         : null,
     doneAt: json['doneAt'] != null
         ? DateTime.parse(json['doneAt'] as String).toLocal()

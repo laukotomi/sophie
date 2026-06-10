@@ -1,66 +1,45 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sophie/models.dart';
 
 class Storage {
-  static const String authTokenKey = 'auth_token';
-  static const String serverUrlKey = 'server_url';
-  static const String dashboardCacheKey = 'cached_dashboard';
+  static const String _authTokenKey = 'auth_token';
+  static const String _serverUrlKey = 'server_url';
+  static const String _dashboardCacheKey = 'cached_dashboard';
   static const String _alertCountsKey = 'alert_notif_counts';
-  static const String _alarmTaskMapKey = 'alarm_task_map';
   static late SharedPreferences _prefs;
 
-  static String? get authToken => _prefs.getString(authTokenKey);
-  static String? get serverUrl => _prefs.getString(serverUrlKey);
+  static String? get authToken => _prefs.getString(_authTokenKey);
+  static String? get serverUrl => _prefs.getString(_serverUrlKey);
+
+  static Map<String, dynamic> _getAlertCountsMap() {
+    final raw = _prefs.getString(_alertCountsKey);
+    final map = raw != null
+        ? Map<String, dynamic>.from(jsonDecode(raw) as Map)
+        : <String, dynamic>{};
+    return map;
+  }
+
+  static void _saveAlertCountsMap(Map<String, dynamic> map) {
+    _prefs.setString(_alertCountsKey, jsonEncode(map));
+  }
 
   static Future init() async {
     _prefs = await SharedPreferences.getInstance();
   }
 
   static Future<void> saveDashboardData(DashboardData data) async {
-    await _prefs.setString(dashboardCacheKey, jsonEncode(data.toJson()));
-    if (Platform.isAndroid) {
-      await _pushTasksToWidget(data.tasks);
-    }
-  }
-
-  static Future<void> _pushTasksToWidget(List<Task> tasks) async {
-    final pending = tasks.where((t) => t.doneAt == null).toList()
-      ..sort((a, b) {
-        if (a.dueAt == null && b.dueAt == null) {
-          return b.createdAt.compareTo(a.createdAt);
-        }
-        if (a.dueAt == null) return -1;
-        if (b.dueAt == null) return 1;
-        return a.dueAt!.compareTo(b.dueAt!);
-      });
-    final json = jsonEncode(
-      pending
-          .map(
-            (t) => {
-              'id': t.id,
-              'text': t.text,
-              'dueAt': t.dueAt?.toIso8601String(),
-            },
-          )
-          .toList(),
-    );
-    await HomeWidget.saveWidgetData<String>('tasks_json', json);
-    await HomeWidget.updateWidget(
-      qualifiedAndroidName: 'com.example.sophie.TasksWidgetReceiver',
-    );
+    await _prefs.setString(_dashboardCacheKey, jsonEncode(data.toJson()));
   }
 
   static Future<void> clear() async {
-    await _prefs.remove(authTokenKey);
-    await _prefs.remove(dashboardCacheKey);
+    await _prefs.remove(_authTokenKey);
+    await _prefs.remove(_dashboardCacheKey);
   }
 
   static DashboardData? getDashboardData() {
-    final raw = _prefs.getString(dashboardCacheKey);
+    final raw = _prefs.getString(_dashboardCacheKey);
     if (raw == null) return null;
     try {
       return DashboardData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
@@ -70,58 +49,26 @@ class Storage {
   }
 
   static Future<void> setAuthToken(String token) async {
-    await _prefs.setString(authTokenKey, token);
+    await _prefs.setString(_authTokenKey, token);
   }
 
   static Future<void> setServerUrl(String url) async {
-    await _prefs.setString(serverUrlKey, url);
+    await _prefs.setString(_serverUrlKey, url);
   }
 
   static int getAlertCount(String taskId) {
-    final raw = _prefs.getString(_alertCountsKey);
-    if (raw == null) return 0;
-    final map = jsonDecode(raw) as Map<String, dynamic>;
+    final map = _getAlertCountsMap();
     return (map[taskId] as int?) ?? 0;
   }
 
   static Future<void> setAlertCount(String taskId, int count) async {
-    final raw = _prefs.getString(_alertCountsKey);
-    final map = raw != null
-        ? Map<String, dynamic>.from(jsonDecode(raw) as Map)
-        : <String, dynamic>{};
+    final map = _getAlertCountsMap();
     map[taskId] = count;
-    await _prefs.setString(_alertCountsKey, jsonEncode(map));
+    _saveAlertCountsMap(map);
   }
 
   static Future<void> removeAlertCount(String taskId) async {
-    final raw = _prefs.getString(_alertCountsKey);
-    if (raw == null) return;
-    final map = Map<String, dynamic>.from(jsonDecode(raw) as Map)
-      ..remove(taskId);
-    await _prefs.setString(_alertCountsKey, jsonEncode(map));
-  }
-
-  static Future<void> setTaskIdForAlarm(int alarmId, String taskId) async {
-    final raw = _prefs.getString(_alarmTaskMapKey);
-    final map = raw != null
-        ? Map<String, dynamic>.from(jsonDecode(raw) as Map)
-        : <String, dynamic>{};
-    map['$alarmId'] = taskId;
-    await _prefs.setString(_alarmTaskMapKey, jsonEncode(map));
-  }
-
-  static String? getTaskIdForAlarm(int alarmId) {
-    final raw = _prefs.getString(_alarmTaskMapKey);
-    if (raw == null) return null;
-    final map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-    return map['$alarmId'] as String?;
-  }
-
-  static Future<void> removeTaskIdForAlarm(int alarmId) async {
-    final raw = _prefs.getString(_alarmTaskMapKey);
-    if (raw == null) return;
-    final map = Map<String, dynamic>.from(jsonDecode(raw) as Map)
-      ..remove('$alarmId');
-    await _prefs.setString(_alarmTaskMapKey, jsonEncode(map));
+    final map = _getAlertCountsMap()..remove(taskId);
+    _saveAlertCountsMap(map);
   }
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "task" ALTER COLUMN "due_at" SET DATA TYPE timestamp;

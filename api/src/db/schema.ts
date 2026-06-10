@@ -70,7 +70,7 @@ export const task = pgTable('task', {
     text: text('text').notNull(),
     rrule: text('rrule'),
     color: text('color'),
-    dueAt: timestamp('due_at', { withTimezone: true }),
+    dueAt: timestamp('due_at', { mode: 'string' }),
     doneAt: timestamp('done_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

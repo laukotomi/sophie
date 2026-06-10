@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { requireAuth, type AuthVariables } from '../middleware.js';
 import { createTask, deleteTask, updateTask, setTaskDone } from '../task_queries.js';
 import type { NextTaskInfo } from '../task_queries.js';
+import { parseDateISOString } from '../utils.js';
 
 const tasks = new Hono<{ Variables: AuthVariables }>();
 
@@ -17,7 +18,7 @@ tasks.post('/', async (c) => {
 
     let dueAt: Date | null = null;
     if (typeof body.dueAt === 'string' && body.dueAt) {
-        dueAt = new Date(body.dueAt);
+        dueAt = parseDateISOString(body.dueAt);
         if (isNaN(dueAt.getTime())) {
             return c.json({ error: 'dueAt is not a valid date' }, 400);
         }
@@ -49,7 +50,7 @@ tasks.post('/', async (c) => {
 
     let taskId: string;
     try {
-        taskId = await createTask(user.id, body.text.trim(), rrule, dueAt, color, collaboratorIds, alerts);
+        taskId = await createTask(user.id, body.text.trim(), rrule, body.dueAt, color, collaboratorIds, alerts);
     } catch (e) {
         console.error('[POST /api/tasks] createTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -94,7 +95,7 @@ tasks.put('/', async (c) => {
 
     let dueAt: Date | null = null;
     if (typeof body.dueAt === 'string' && body.dueAt) {
-        dueAt = new Date(body.dueAt);
+        dueAt = parseDateISOString(body.dueAt);
         if (isNaN(dueAt.getTime())) {
             return c.json({ error: 'dueAt is not a valid date' }, 400);
         }
@@ -125,7 +126,7 @@ tasks.put('/', async (c) => {
     }
 
     try {
-        await updateTask(user.id, body.taskId, body.text.trim(), rrule, dueAt, color, collaboratorIds, alerts);
+        await updateTask(user.id, body.taskId, body.text.trim(), rrule, body.dueAt, color, collaboratorIds, alerts);
     } catch (e) {
         console.error('[PUT /api/tasks] updateTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';

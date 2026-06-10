@@ -298,7 +298,7 @@ class BackendClient {
           body: jsonEncode({
             'text': text,
             if (rrule != null && rrule.isNotEmpty) 'rrule': rrule,
-            if (dueAt != null) 'dueAt': dueAt.toUtc().toIso8601String(),
+            if (dueAt != null) 'dueAt': dueAt.toIso8601String(),
             'color': color,
             if (collaboratorIds.isNotEmpty) 'collaboratorIds': collaboratorIds,
             if (alerts.isNotEmpty)
@@ -345,7 +345,7 @@ class BackendClient {
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       return (
         nextTaskId: json['nextTaskId'] as String,
-        nextDueAt: DateTime.parse(json['nextDueAt'] as String).toLocal(),
+        nextDueAt: DateTime.parse(json['nextDueAt'] as String),
       );
     }
     if (response.statusCode != 204) {
@@ -390,7 +390,7 @@ class BackendClient {
             'taskId': taskId,
             'text': text,
             if (rrule != null && rrule.isNotEmpty) 'rrule': rrule,
-            if (dueAt != null) 'dueAt': dueAt.toUtc().toIso8601String(),
+            if (dueAt != null) 'dueAt': dueAt.toIso8601String(),
             'color': color,
             if (collaboratorIds.isNotEmpty) 'collaboratorIds': collaboratorIds,
             'alerts': alerts

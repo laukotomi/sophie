@@ -138,7 +138,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.now(),
+      initialTime: _dueAt != null
+          ? TimeOfDay.fromDateTime(_dueAt!)
+          : TimeOfDay.now(),
     );
     if (time == null || !mounted) return;
 
@@ -152,7 +154,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
     if (_dueAt != null) {
       final diff = _dueAt!.difference(picked);
-      if (diff.isNegative || diff == Duration.zero) {
+      if (diff.isNegative) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Alert must be before the due date.')),
@@ -500,41 +502,43 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 child: AbsorbPointer(
                   absorbing: _dueAt == null,
                   child: RRuleGenerator(
-                config: RRuleGeneratorConfig(
-                  headerStyle: const RRuleHeaderStyle(
-                    textStyle: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                    ),
-                  ),
-                  switchStyle: RRuleSwitchStyle(
-                    isCupertinoStyle: true,
-                    activeTrackColor: Colors.blue,
-                    inactiveTrackColor: Colors.grey,
-                  ),
-                  datePickerStyle: RRuleDatePickerStyle(
-                    datePickerButtonStyle: ButtonStyle(
-                      shape: WidgetStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                    key: ValueKey(_dueAt),
+                    initialDate: _dueAt,
+                    config: RRuleGeneratorConfig(
+                      headerStyle: const RRuleHeaderStyle(
+                        textStyle: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
                         ),
                       ),
-                      side: WidgetStateProperty.all(
-                        BorderSide(color: Colors.blue, width: 1),
+                      switchStyle: RRuleSwitchStyle(
+                        isCupertinoStyle: true,
+                        activeTrackColor: Colors.blue,
+                        inactiveTrackColor: Colors.grey,
                       ),
+                      datePickerStyle: RRuleDatePickerStyle(
+                        datePickerButtonStyle: ButtonStyle(
+                          shape: WidgetStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          side: WidgetStateProperty.all(
+                            BorderSide(color: Colors.blue, width: 1),
+                          ),
+                        ),
+                        datePickerTextStyle: TextStyle(
+                          fontSize: 13,
+                          color: Colors.blue,
+                        ),
+                      ),
+                      divider: Divider(thickness: 0.5, color: Colors.blue),
                     ),
-                    datePickerTextStyle: TextStyle(
-                      fontSize: 13,
-                      color: Colors.blue,
-                    ),
+                    initialRRule: _rrule,
+                    withExcludeDates: true,
+                    onChange: (rrule) => _rrule = rrule,
                   ),
-                  divider: Divider(thickness: 0.5, color: Colors.blue),
-                ),
-                initialRRule: _rrule,
-                withExcludeDates: true,
-                onChange: (rrule) => _rrule = rrule,
-                ),
                 ),
               ),
             ],

@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:sophie/backend.dart';
 import 'package:sophie/screens/notes_screen.dart';
+import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/screens/tasks_screen.dart';
 import 'package:sophie/storage.dart';
 
@@ -50,10 +54,34 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  static Future<void> _pushTasksToWidget(List<Task> tasks) async {
+    final pending = tasks.where((t) => t.doneAt == null).toList();
+    final json = jsonEncode(
+      pending
+          .map(
+            (t) => {
+              'id': t.id,
+              'text': t.text,
+              'dueAt': t.dueAt?.toIso8601String(),
+            },
+          )
+          .toList(),
+    );
+    await HomeWidget.saveWidgetData<String>('tasks_json', json);
+    await HomeWidget.updateWidget(
+      qualifiedAndroidName: 'com.example.sophie.TasksWidgetReceiver',
+    );
+  }
+
   Future<DashboardData> _loadData() async {
     try {
       final data = await widget.client.getDashboardData();
+      await AlertNotifications.rescheduleAll(data.tasks);
       await Storage.saveDashboardData(data);
+      if (Platform.isAndroid) {
+        await _pushTasksToWidget(data.tasks);
+      }
+
       if (mounted) setState(() => _usingCache = false);
       return data;
     } catch (error) {
