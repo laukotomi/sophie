@@ -287,6 +287,10 @@ class _NoteCardState extends State<NoteCard> {
       ),
     );
 
+    if (widget.note.dontFold) {
+      return content;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

@@ -14,6 +14,8 @@ async function parseNoteForm(form: FormData) {
         : undefined;
     const colorRaw = form.get('color');
     const color = typeof colorRaw === 'string' && colorRaw ? colorRaw : null;
+    const dontFold = form.get('dontFold') === 'true';
+    const shoppingList = form.get('shoppingList') === 'true';
 
     const fileEntries = form.getAll('files').filter((f): f is File => f instanceof File);
     const filesData = fileEntries.map((f) => ({
@@ -29,6 +31,8 @@ async function parseNoteForm(form: FormData) {
         collaborators: typeof collaborators === 'string' && collaborators ? collaborators : undefined,
         fixedPosition: fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
         color,
+        dontFold,
+        shoppingList,
         files: filesData.length > 0 ? filesData : undefined,
     };
 }
@@ -46,7 +50,7 @@ notes.post('/', async (c) => {
     if (!parsed) return c.json({ error: 'text is required' }, 400);
 
     try {
-        await editOrCreateNote(user.id, null, parsed.text, parsed.collaborators, parsed.fixedPosition, parsed.color, parsed.files);
+        await editOrCreateNote(user.id, null, parsed.text, parsed.collaborators, parsed.fixedPosition, parsed.color, parsed.dontFold, parsed.shoppingList, parsed.files);
     } catch (e) {
         console.error('[POST /api/notes] editOrCreateNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -70,7 +74,7 @@ notes.put('/', async (c) => {
     if (!parsed) return c.json({ error: 'text is required' }, 400);
 
     try {
-        await editOrCreateNote(user.id, noteIdRaw, parsed.text, parsed.collaborators, parsed.fixedPosition, parsed.color, parsed.files);
+        await editOrCreateNote(user.id, noteIdRaw, parsed.text, parsed.collaborators, parsed.fixedPosition, parsed.color, parsed.dontFold, parsed.shoppingList, parsed.files);
     } catch (e) {
         console.error('[PUT /api/notes] editOrCreateNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';

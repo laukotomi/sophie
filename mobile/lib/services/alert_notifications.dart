@@ -254,13 +254,17 @@ class AlertNotifications {
     if (alarmId == null) return;
 
     if (action.buttonKeyPressed == _stopActionKey) {
-      try { await Alarm.stop(alarmId); } catch (_) {}
+      try {
+        await Alarm.stop(alarmId);
+      } catch (_) {}
       await AwesomeNotifications().dismiss(_actionNotifId(alarmId));
       return;
     }
 
     if (action.buttonKeyPressed == _snoozeActionKey) {
-      try { await Alarm.stop(alarmId); } catch (_) {}
+      try {
+        await Alarm.stop(alarmId);
+      } catch (_) {}
       await AwesomeNotifications().dismiss(_actionNotifId(alarmId));
       await _scheduleSnoozeNotification(
         alarmId,
@@ -271,7 +275,9 @@ class AlertNotifications {
     }
 
     if (action.buttonKeyPressed == _doneActionKey) {
-      try { await Alarm.stop(alarmId); } catch (_) {}
+      try {
+        await Alarm.stop(alarmId);
+      } catch (_) {}
       await AwesomeNotifications().dismiss(_actionNotifId(alarmId));
       final taskId = action.payload?['taskId'];
       if (taskId != null) {
@@ -292,7 +298,7 @@ class AlertNotifications {
         channelKey: _snoozeChannelKey,
         title: 'Sophie',
         body: body,
-        payload: {'alarmId': '$alarmId', if (taskId != null) 'taskId': taskId},
+        payload: {'alarmId': '$alarmId', 'taskId': ?taskId},
         autoDismissible: false,
         wakeUpScreen: true,
         locked: true,

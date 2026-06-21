@@ -18,6 +18,8 @@ export async function editOrCreateNote(
     collaboratorsJson?: string,
     fixedPosition?: number,
     color?: string | null,
+    dontFold?: boolean,
+    shoppingList?: boolean,
     files?: { name: string; type: string; size: number; stream: ReadableStream<Uint8Array> }[],
 ) {
     const isEdit = typeof noteId === 'string' && noteId.length > 0;
@@ -48,14 +50,14 @@ export async function editOrCreateNote(
 
                 await tx
                     .update(note)
-                    .set({ text: text.trim(), color: color ?? null, editingBy: null, lockedUntil: null })
+                    .set({ text: text.trim(), color: color ?? null, dontFold: dontFold ?? false, shoppingList: shoppingList ?? false, editingBy: null, lockedUntil: null })
                     .where(eq(note.id, targetNoteId));
 
                 await tx.delete(collaborator).where(eq(collaborator.noteId, targetNoteId));
             } else {
                 await tx
                     .insert(note)
-                    .values({ id: targetNoteId, text: text.trim(), color: color ?? null, owner: userId });
+                    .values({ id: targetNoteId, text: text.trim(), color: color ?? null, dontFold: dontFold ?? false, shoppingList: shoppingList ?? false, owner: userId });
             }
 
             if (collabs.length > 0) {

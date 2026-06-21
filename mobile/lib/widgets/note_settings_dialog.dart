@@ -3,14 +3,18 @@ import 'package:flutter/material.dart';
 class NoteSettingsDialog extends StatefulWidget {
   final int? initialPosition;
   final String? initialColor;
+  final bool initialDontFold;
+  final bool initialShoppingList;
   final List<String?> palette;
   final Color Function(String) contrastColor;
-  final void Function(int? position, String? color) onApply;
+  final void Function(int? position, String? color, bool dontFold, bool shoppingList) onApply;
 
   const NoteSettingsDialog({
     super.key,
     required this.initialPosition,
     required this.initialColor,
+    this.initialDontFold = false,
+    this.initialShoppingList = false,
     required this.palette,
     required this.contrastColor,
     required this.onApply,
@@ -23,6 +27,8 @@ class NoteSettingsDialog extends StatefulWidget {
 class _NoteSettingsDialogState extends State<NoteSettingsDialog> {
   late final TextEditingController _controller;
   late String? _selectedColor;
+  late bool _dontFold;
+  late bool _shoppingList;
 
   @override
   void initState() {
@@ -31,6 +37,8 @@ class _NoteSettingsDialogState extends State<NoteSettingsDialog> {
       text: widget.initialPosition?.toString() ?? '',
     );
     _selectedColor = widget.initialColor;
+    _dontFold = widget.initialDontFold;
+    _shoppingList = widget.initialShoppingList;
   }
 
   @override
@@ -95,6 +103,20 @@ class _NoteSettingsDialogState extends State<NoteSettingsDialog> {
               );
             }).toList(),
           ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text("Don't fold"),
+            subtitle: const Text('Always show the full note'),
+            value: _dontFold,
+            onChanged: (v) => setState(() => _dontFold = v),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Shopping list'),
+            value: _shoppingList,
+            onChanged: (v) => setState(() => _shoppingList = v),
+          ),
         ],
       ),
       actions: [
@@ -107,7 +129,7 @@ class _NoteSettingsDialogState extends State<NoteSettingsDialog> {
             final raw = _controller.text.trim();
             final position = raw.isEmpty ? null : int.tryParse(raw);
             Navigator.of(context).pop();
-            widget.onApply(position, _selectedColor);
+            widget.onApply(position, _selectedColor, _dontFold, _shoppingList);
           },
           child: const Text('Apply'),
         ),

@@ -43,6 +43,8 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   Timer? _lockHeartbeat;
   int? _fixedPosition;
   String? _color;
+  bool _dontFold = false;
+  bool _shoppingList = false;
   String? _errorMessage;
 
   bool get _isEditing => widget.existingNote != null;
@@ -61,6 +63,8 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     );
     _fixedPosition = widget.existingNote?.position;
     _color = widget.existingNote?.color;
+    _dontFold = widget.existingNote?.dontFold ?? false;
+    _shoppingList = widget.existingNote?.shoppingList ?? false;
     _existingFiles = List.of(widget.existingNote?.files ?? []);
     if (_isEditing) _startLockHeartbeat();
     // Pre-populate collaborators from the existing note, matching against users
@@ -123,12 +127,16 @@ class _AddNoteScreenState extends State<AddNoteScreen>
       builder: (ctx) => NoteSettingsDialog(
         initialPosition: _fixedPosition,
         initialColor: _color,
+        initialDontFold: _dontFold,
+        initialShoppingList: _shoppingList,
         palette: kNotePalette,
         contrastColor: noteContrastColor,
-        onApply: (position, color) {
+        onApply: (position, color, dontFold, shoppingList) {
           setState(() {
             _fixedPosition = position;
             _color = color;
+            _dontFold = dontFold;
+            _shoppingList = shoppingList;
           });
         },
       ),
@@ -236,6 +244,8 @@ class _AddNoteScreenState extends State<AddNoteScreen>
           collaborators: collabs,
           fixedPosition: _fixedPosition,
           color: _color,
+          dontFold: _dontFold,
+          shoppingList: _shoppingList,
           files: fileArgs,
         );
       } else {
@@ -244,6 +254,8 @@ class _AddNoteScreenState extends State<AddNoteScreen>
           collaborators: collabs,
           fixedPosition: _fixedPosition,
           color: _color,
+          dontFold: _dontFold,
+          shoppingList: _shoppingList,
           files: fileArgs,
         );
       }

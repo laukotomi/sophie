@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, serial, integer, text, timestamp, time, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, serial, integer, boolean, text, timestamp, time, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { user } from './auth.schema.js';
 
@@ -8,6 +8,8 @@ export const note = pgTable('note', {
     id: text('id').primaryKey().default(sql`gen_random_uuid()`),
     text: text('text').notNull(),
     color: text('color'),
+    dontFold: boolean('dont_fold').notNull().default(false),
+    shoppingList: boolean('shopping_list').notNull().default(false),
     owner: text('owner')
         .notNull()
         .references(() => user.id, { onDelete: 'cascade' }),
