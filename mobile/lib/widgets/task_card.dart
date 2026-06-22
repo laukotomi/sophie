@@ -149,21 +149,21 @@ class _TaskCardState extends State<TaskCard> {
                       if (widget.task.isOwner)
                         NoteChip(
                           icon: Icons.check_circle_outline,
-                          label: 'Owner',
+                          //label: 'Owner',
                           color: theme.colorScheme.primaryContainer,
                           textColor: theme.colorScheme.onPrimaryContainer,
                         )
                       else
                         NoteChip(
                           icon: Icons.person_outline,
-                          label: 'Collaborator',
+                          //label: 'Collaborator',
                           color: theme.colorScheme.secondaryContainer,
                           textColor: theme.colorScheme.onSecondaryContainer,
                         ),
                       ...widget.task.collaborators.map(
                         (c) => NoteChip(
                           icon: Icons.person,
-                          label: c.name,
+                          //label: c.name,
                           color: theme.colorScheme.tertiaryContainer,
                           textColor: theme.colorScheme.onTertiaryContainer,
                         ),
@@ -172,15 +172,14 @@ class _TaskCardState extends State<TaskCard> {
                           widget.task.rrule!.isNotEmpty)
                         NoteChip(
                           icon: Icons.repeat,
-                          label: 'Recurring',
+                          //label: 'Recurring',
                           color: theme.colorScheme.secondaryContainer,
                           textColor: theme.colorScheme.onSecondaryContainer,
                         ),
                       if (widget.task.alerts.isNotEmpty)
                         NoteChip(
                           icon: Icons.notifications_outlined,
-                          label:
-                              '${widget.task.alerts.length} alert${widget.task.alerts.length == 1 ? '' : 's'}',
+                          label: '${widget.task.alerts.length}',
                           color: theme.colorScheme.secondaryContainer,
                           textColor: theme.colorScheme.onSecondaryContainer,
                         ),
@@ -205,24 +204,35 @@ class _TaskCardState extends State<TaskCard> {
   }
 
   String _formatDue() {
-    if (widget.task.dueAt == null) {
-      return _formatDate(widget.task.createdAt);
-    }
+    if (widget.task.dueAt == null) return '';
     final d = widget.task.dueAt!;
-    return 'Due ${d.year}-${_pad(d.month)}-${_pad(d.day)} ${_pad(d.hour)}:${_pad(d.minute)}';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dueDay = DateTime(d.year, d.month, d.day);
+    final diffDays = dueDay.difference(today).inDays;
+    final time = '${_pad(d.hour)}:${_pad(d.minute)}';
+
+    if (diffDays == 0) return 'Today $time';
+    if (diffDays == 1) return 'Tomorrow $time';
+    if (diffDays > 1 && diffDays < 7) {
+      const weekdays = [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday',
+      ];
+      return '${weekdays[d.weekday - 1]} $time';
+    }
+
+    return '${d.year}-${_pad(d.month)}-${_pad(d.day)} $time';
   }
 
   bool _isDueOverdue() {
     if (widget.task.dueAt == null || widget.task.doneAt != null) return false;
     return widget.task.dueAt!.isBefore(DateTime.now());
-  }
-
-  String _formatDate(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inDays == 0) return 'Today';
-    if (diff.inDays == 1) return 'Yesterday';
-    return '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)}';
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');

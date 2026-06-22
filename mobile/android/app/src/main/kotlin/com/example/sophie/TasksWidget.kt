@@ -47,10 +47,14 @@ private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 private fun formatDue(dueAt: LocalDateTime?): String {
     if (dueAt == null) return ""
     val today = LocalDate.now()
-    return if (dueAt.toLocalDate() == today) {
-        "Today ${dueAt.format(timeFormatter)}"
-    } else {
-        "${dueAt.format(dateFormatter)} ${dueAt.format(timeFormatter)}"
+    val dueDay = dueAt.toLocalDate()
+    val diffDays = dueDay.toEpochDay() - today.toEpochDay()
+    val time = dueAt.format(timeFormatter)
+    return when {
+        diffDays == 0L -> "Today $time"
+        diffDays == 1L -> "Tomorrow $time"
+        diffDays in 2L..6L -> "${dueDay.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }} $time"
+        else -> "${dueAt.format(dateFormatter)} $time"
     }
 }
 
