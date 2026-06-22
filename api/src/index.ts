@@ -16,6 +16,13 @@ app.use(cors({
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
 
+app.use(async (c, next) => {
+    const start = performance.now();
+    await next();
+    const ms = (performance.now() - start).toFixed(1);
+    console.log(`${c.req.method} ${new URL(c.req.url).pathname} ${c.res.status} ${ms}ms`);
+});
+
 app.onError((err, c) => {
     console.error(`[${c.req.method}] ${c.req.url}`, err);
     return c.json({ error: 'Internal server error' }, 500);

@@ -1,13 +1,19 @@
 import { Hono } from 'hono';
 import { editOrCreateNote, deleteNote, acquireNoteLock, releaseNoteLock, refreshNoteLock } from '../note_queries.js';
 import { requireAuth, type AuthVariables } from '../middleware.js';
+import { CollaboratorInfo, NoteFormData } from '../models.js';
 
-async function parseNoteForm(form: FormData) {
+async function parseNoteForm(form: FormData | null): Promise<NoteFormData | null> {
+    if (!form) return null;
+
     const text = form.get('text');
     if (typeof text !== 'string' || !text.trim()) return null;
 
-    const noteId = form.get('noteId');
-    const collaborators = form.get('collaborators');
+    const collaboratorsJson = form.get('collaborators');
+    const collaborators = typeof collaboratorsJson === 'string' && collaboratorsJson ?
+        JSON.parse(collaboratorsJson) as CollaboratorInfo[]
+        : undefined;
+
     const fixedPositionRaw = form.get('fixedPosition');
     const fixedPosition = fixedPositionRaw !== null && fixedPositionRaw !== ''
         ? parseInt(fixedPositionRaw as string, 10)
@@ -26,9 +32,8 @@ async function parseNoteForm(form: FormData) {
     }));
 
     return {
-        text,
-        noteId: typeof noteId === 'string' && noteId.trim() ? noteId : null,
-        collaborators: typeof collaborators === 'string' && collaborators ? collaborators : undefined,
+        text: text.trim(),
+        collaborators,
         fixedPosition: fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
         color,
         dontFold,
@@ -44,13 +49,11 @@ notes.use(requireAuth);
 notes.post('/', async (c) => {
     const user = c.get('user');
     const form = await c.req.formData().catch(() => null);
-    if (!form) return c.json({ error: 'text is required' }, 400);
-
     const parsed = await parseNoteForm(form);
     if (!parsed) return c.json({ error: 'text is required' }, 400);
 
     try {
-        await editOrCreateNote(user.id, null, parsed.text, parsed.collaborators, parsed.fixedPosition, parsed.color, parsed.dontFold, parsed.shoppingList, parsed.files);
+        await editOrCreateNote(user.id, null, parsed);
     } catch (e) {
         console.error('[POST /api/notes] editOrCreateNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -63,18 +66,16 @@ notes.post('/', async (c) => {
 notes.put('/', async (c) => {
     const user = c.get('user');
     const form = await c.req.formData().catch(() => null);
-    if (!form) return c.json({ error: 'noteId is required' }, 400);
+    const parsed = await parseNoteForm(form);
+    if (!parsed) return c.json({ error: 'text is required' }, 400);
 
-    const noteIdRaw = form.get('noteId');
+    const noteIdRaw = form!.get('noteId');
     if (typeof noteIdRaw !== 'string' || !noteIdRaw.trim()) {
         return c.json({ error: 'noteId is required' }, 400);
     }
 
-    const parsed = await parseNoteForm(form);
-    if (!parsed) return c.json({ error: 'text is required' }, 400);
-
     try {
-        await editOrCreateNote(user.id, noteIdRaw, parsed.text, parsed.collaborators, parsed.fixedPosition, parsed.color, parsed.dontFold, parsed.shoppingList, parsed.files);
+        await editOrCreateNote(user.id, noteIdRaw, parsed);
     } catch (e) {
         console.error('[PUT /api/notes] editOrCreateNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';

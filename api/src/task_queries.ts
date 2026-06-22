@@ -4,6 +4,7 @@ import { task, taskCollaborator, taskAlert } from './db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import rrulePkg from 'rrule';
 import { parseDateISOString } from './utils.js';
+import { AlertInput, TaskData } from './models.js';
 const { RRule } = rrulePkg;
 
 function getNextOccurrence(rruleStr: string, currentDueAt: Date): Date | null {
@@ -17,39 +18,56 @@ function getNextOccurrence(rruleStr: string, currentDueAt: Date): Date | null {
     }
 }
 
-type AlertInput =
-    | { type: 'absolute'; alertAt: Date }
-    | { type: 'relative'; timeBefore: string }; // 'HH:MM:SS'
-
-export async function createTask(
+export async function editOrCreateTask(
     userId: string,
-    text: string,
-    rrule: string | null,
-    dueAt: string,
-    color: string | null,
-    collaboratorIds: string[],
-    alerts: AlertInput[],
+    taskId: string | null,
+    taskData: TaskData,
 ): Promise<string> {
-    const taskId = randomUUID();
-    await db.transaction(async (tx) => {
-        await tx.insert(task).values({
-            id: taskId,
-            owner: userId,
-            text,
-            rrule,
-            dueAt,
-            color,
-        });
+    const isEdit = typeof taskId === 'string' && taskId.length > 0;
 
-        if (collaboratorIds.length > 0) {
+    if (!isEdit)
+        taskId = randomUUID();
+    else
+        taskId = taskId as string;
+
+    if (isEdit)
+        await assertEditAccess(userId, taskId);
+
+    const taskDbData = {
+        text: taskData.text,
+        rrule: taskData.rrule,
+        dueAt: taskData.dueAt,
+        color: taskData.color,
+    }
+
+    await db.transaction(async (tx) => {
+        if (isEdit) {
+            await tx.update(task)
+                .set(taskData)
+                .where(eq(task.id, taskId));
+        }
+        else {
+            await tx.insert(task).values({
+                id: taskId,
+                owner: userId,
+                ...taskDbData
+            });
+        }
+
+        if (isEdit) {
+            await tx.delete(taskCollaborator).where(eq(taskCollaborator.taskId, taskId));
+            await tx.delete(taskAlert).where(eq(taskAlert.taskId, taskId));
+        }
+
+        if (taskData.collaboratorIds.length > 0) {
             await tx.insert(taskCollaborator).values(
-                collaboratorIds.map((uid) => ({ userId: uid, taskId })),
+                taskData.collaboratorIds.map((uid) => ({ userId: uid, taskId })),
             );
         }
 
-        if (alerts.length > 0) {
+        if (taskData.alerts.length > 0) {
             await tx.insert(taskAlert).values(
-                alerts.map((a) =>
+                taskData.alerts.map((a) =>
                     a.type === 'absolute'
                         ? { taskId, alertAt: a.alertAt, timeBefore: null }
                         : { taskId, alertAt: null, timeBefore: a.timeBefore },
@@ -60,6 +78,7 @@ export async function createTask(
 
     return taskId;
 }
+
 export async function deleteTask(userId: string, taskId: string): Promise<void> {
     const [existing] = await db
         .select({ id: task.id, owner: task.owner })
@@ -70,49 +89,6 @@ export async function deleteTask(userId: string, taskId: string): Promise<void> 
     if (existing.owner !== userId) throw new Error('Forbidden');
 
     await db.delete(task).where(eq(task.id, taskId));
-}
-
-export async function updateTask(
-    userId: string,
-    taskId: string,
-    text: string,
-    rrule: string | null,
-    dueAt: string,
-    color: string | null,
-    collaboratorIds: string[],
-    alerts: AlertInput[],
-): Promise<void> {
-    const [existing] = await db
-        .select({ id: task.id, owner: task.owner })
-        .from(task)
-        .where(eq(task.id, taskId));
-
-    if (!existing) throw new Error('Task not found');
-    if (existing.owner !== userId) throw new Error('Forbidden');
-
-    await db.transaction(async (tx) => {
-        await tx.update(task)
-            .set({ text, rrule, dueAt, color })
-            .where(eq(task.id, taskId));
-
-        await tx.delete(taskCollaborator).where(eq(taskCollaborator.taskId, taskId));
-        if (collaboratorIds.length > 0) {
-            await tx.insert(taskCollaborator).values(
-                collaboratorIds.map((uid) => ({ userId: uid, taskId })),
-            );
-        }
-
-        await tx.delete(taskAlert).where(eq(taskAlert.taskId, taskId));
-        if (alerts.length > 0) {
-            await tx.insert(taskAlert).values(
-                alerts.map((a) =>
-                    a.type === 'absolute'
-                        ? { taskId, alertAt: a.alertAt, timeBefore: null }
-                        : { taskId, alertAt: null, timeBefore: a.timeBefore },
-                ),
-            );
-        }
-    });
 }
 
 export type NextTaskInfo = { nextTaskId: string; nextDueAt: Date };
@@ -171,15 +147,28 @@ export async function setTaskDone(
         .filter((a) => a.timeBefore !== null)
         .map((a) => ({ type: 'relative' as const, timeBefore: a.timeBefore! }));
 
-    const nextTaskId = await createTask(
-        existing.owner,
-        existing.text,
-        existing.rrule,
-        nextDueAt.toISOString(),
-        existing.color,
-        collabs.map((c) => c.userId),
+    const taskData: TaskData = {
+        ...existing,
+        dueAt: nextDueAt.toISOString(),
+        collaboratorIds: collabs.map((c) => c.userId),
         alerts,
+    }
+
+    const nextTaskId = await editOrCreateTask(
+        existing.owner,
+        null,
+        taskData
     );
 
     return { nextTaskId, nextDueAt };
+}
+
+async function assertEditAccess(userId: string, taskId: string) {
+    const [existing] = await db
+        .select({ id: task.id, owner: task.owner })
+        .from(task)
+        .where(eq(task.id, taskId));
+
+    if (!existing) throw new Error('Task not found');
+    if (existing.owner !== userId) throw new Error('Forbidden');
 }
