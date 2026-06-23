@@ -433,7 +433,7 @@ class _NoteCardState extends State<NoteCard> {
             ),
           );
         } else if (segment is _SpacerSegment) {
-          return const SizedBox(height: 8);
+          return const SizedBox(height: 16);
         } else {
           final textSeg = segment as _TextSegment;
           return SelectionArea(
