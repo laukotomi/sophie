@@ -32,11 +32,13 @@ class _HomeScreenState extends State<HomeScreen> {
   late Future<DashboardData> _dataFuture;
   bool _usingCache = false;
   StreamSubscription? _navEventSub;
+  StreamSubscription? _refreshSub;
 
   @override
   void initState() {
     super.initState();
     _dataFuture = _loadData();
+    _refreshSub = AlertNotifications.refreshRequests.listen((_) => _refresh());
     // Background case: app already running, widget tapped → onNewIntent fires.
     _navEventSub = _navEvents.receiveBroadcastStream().listen((route) {
       if (route == 'tasks' && mounted) setState(() => _selectedIndex = 1);
@@ -51,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _navEventSub?.cancel();
+    _refreshSub?.cancel();
     super.dispose();
   }
 
@@ -63,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
               'id': t.id,
               'text': t.text,
               'dueAt': t.dueAt?.toIso8601String(),
+              'color': t.color,
             },
           )
           .toList(),

@@ -75,6 +75,7 @@ class _MainAppState extends State<MainApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: AlertNotifications.navigatorKey,
       theme: ThemeData.dark(useMaterial3: true),
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       supportedLocales: const [Locale('en'), Locale('hu')],

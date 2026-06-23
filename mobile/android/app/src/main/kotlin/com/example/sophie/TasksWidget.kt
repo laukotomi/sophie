@@ -38,7 +38,7 @@ private val TextPrimary = ColorProvider(Color(0xFFCDD6F4))
 private val TextMuted = ColorProvider(Color(0xFF6C7086))
 private val AccentColor = ColorProvider(Color(0xFF89B4FA))
 
-data class TaskItem(val id: String, val text: String, val dueAt: LocalDateTime?)
+data class TaskItem(val id: String, val text: String, val dueAt: LocalDateTime?, val color: String?)
 
 private val isoFormatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -55,6 +55,16 @@ private fun formatDue(dueAt: LocalDateTime?): String {
         diffDays == 1L -> "Tomorrow $time"
         diffDays in 2L..6L -> "${dueDay.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }} $time"
         else -> "${dueAt.format(dateFormatter)} $time"
+    }
+}
+
+private fun parseTaskColor(hex: String?): Color? {
+    if (hex == null) return null
+    return try {
+        val rgb = hex.trimStart('#').toLong(16)
+        Color((0xFF000000L or rgb).toULong())
+    } catch (_: Exception) {
+        null
     }
 }
 
@@ -105,7 +115,7 @@ class TasksWidget : GlanceAppWidget() {
                                     modifier = GlanceModifier
                                         .width(6.dp)
                                         .height(6.dp)
-                                        .background(AccentColor),
+                                        .background(parseTaskColor(task.color)?.let { ColorProvider(it) } ?: AccentColor),
                                 )
                                 Column(
                                     modifier = GlanceModifier
@@ -145,7 +155,8 @@ class TasksWidget : GlanceAppWidget() {
                     // ISO string from Dart may have fractional seconds; trim to seconds
                     LocalDateTime.parse(it.substringBefore(".").trimEnd('Z'), isoFormatter)
                 }
-                TaskItem(id = obj.getString("id"), text = obj.getString("text"), dueAt = dueAt)
+                val color = if (obj.isNull("color")) null else obj.optString("color", null)
+                TaskItem(id = obj.getString("id"), text = obj.getString("text"), dueAt = dueAt, color = color)
             }
         } catch (_: Exception) {
             emptyList()
