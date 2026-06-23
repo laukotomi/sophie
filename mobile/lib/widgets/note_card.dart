@@ -145,6 +145,7 @@ class _NoteCardState extends State<NoteCard> {
     }
 
     if (!ctx.mounted) return;
+    final originalText = widget.note.text;
     widget.note.text = widget.note.shoppingList && _checkedItems.isNotEmpty
         ? _removeCheckedItems(latestText)
         : latestText;
@@ -160,7 +161,13 @@ class _NoteCardState extends State<NoteCard> {
         ),
       ),
     );
-    if (edited == true) widget.onEdited();
+    if (edited == true) {
+      widget.onEdited();
+    } else {
+      // Restore the original text so discarding doesn't permanently remove
+      // checked items from the displayed note.
+      setState(() => widget.note.text = originalText);
+    }
   }
 
   Widget _editButton(BuildContext ctx) {
