@@ -432,6 +432,8 @@ class _NoteCardState extends State<NoteCard> {
               ),
             ),
           );
+        } else if (segment is _SpacerSegment) {
+          return const SizedBox(height: 8);
         } else {
           final textSeg = segment as _TextSegment;
           return SelectionArea(
@@ -458,22 +460,31 @@ class _NoteCardState extends State<NoteCard> {
     final segments = <_ShoppingSegment>[];
     final buffer = StringBuffer();
 
+    void flushBuffer() {
+      if (buffer.isEmpty) return;
+      final buffered = buffer.toString().trimRight();
+      if (buffered.isNotEmpty) {
+        segments.add(_TextSegment(buffered));
+      } else {
+        final lineCount = buffer.toString().split('\n').length - 1;
+        for (var i = 0; i < lineCount; i++) {
+          segments.add(_SpacerSegment());
+        }
+      }
+      buffer.clear();
+    }
+
     for (final line in lines) {
       final match = RegExp(r'^-\s+(.+)$').firstMatch(line);
       if (match != null) {
-        final buffered = buffer.toString().trimRight();
-        if (buffered.isNotEmpty) {
-          segments.add(_TextSegment(buffered));
-          buffer.clear();
-        }
+        flushBuffer();
         segments.add(_ListItemSegment(match.group(1)!));
       } else {
         buffer.writeln(line);
       }
     }
 
-    final remaining = buffer.toString().trimRight();
-    if (remaining.isNotEmpty) segments.add(_TextSegment(remaining));
+    flushBuffer();
 
     return segments;
   }
@@ -490,6 +501,8 @@ class _ListItemSegment extends _ShoppingSegment {
   final String text;
   _ListItemSegment(this.text);
 }
+
+class _SpacerSegment extends _ShoppingSegment {}
 
 /// Clips [child] to [maxHeight] when [collapsed], and calls [onOverflowDetected]
 /// post-frame whenever the child's natural height exceeds [maxHeight].
