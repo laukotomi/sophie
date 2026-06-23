@@ -40,6 +40,7 @@ class _NoteCardState extends State<NoteCard> {
   bool _acquiringLock = false;
   bool _collapsed = true;
   bool _overflows = false;
+  final Set<String> _checkedItems = {};
 
   static const double _maxCollapsedHeight = 300;
 
@@ -65,6 +66,9 @@ class _NoteCardState extends State<NoteCard> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _onScroll();
       });
+    }
+    if (old.note.id != widget.note.id) {
+      _checkedItems.clear();
     }
   }
 
@@ -141,7 +145,9 @@ class _NoteCardState extends State<NoteCard> {
     }
 
     if (!ctx.mounted) return;
-    widget.note.text = latestText;
+    widget.note.text = widget.note.shoppingList && _checkedItems.isNotEmpty
+        ? _removeCheckedItems(latestText)
+        : latestText;
     setState(() => _acquiringLock = false);
 
     final edited = await Navigator.of(ctx).push<bool>(
@@ -275,17 +281,22 @@ class _NoteCardState extends State<NoteCard> {
   }
 
   Widget _buildNoteBody() {
-    final content = SelectionArea(
-      child: MarkdownBody(
-        data: _preserveBlankLines(widget.note.text),
-        softLineBreak: true,
-        onTapLink: (_, href, _) {
-          if (href != null) {
-            launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
-          }
-        },
-      ),
-    );
+    final content = widget.note.shoppingList
+        ? _buildShoppingListBody()
+        : SelectionArea(
+            child: MarkdownBody(
+              data: _preserveBlankLines(widget.note.text),
+              softLineBreak: true,
+              onTapLink: (_, href, _) {
+                if (href != null) {
+                  launchUrl(
+                    Uri.parse(href),
+                    mode: LaunchMode.externalApplication,
+                  );
+                }
+              },
+            ),
+          );
 
     if (widget.note.dontFold) {
       return content;
@@ -353,6 +364,124 @@ class _NoteCardState extends State<NoteCard> {
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');
+
+  /// Returns [text] with any list items whose text appears in [_checkedItems]
+  /// removed. Used to strip ticked-off shopping items before opening the editor.
+  String _removeCheckedItems(String text) {
+    final lines = text.split('\n');
+    final filtered = lines.where((line) {
+      final match = RegExp(r'^-\s+(.+)$').firstMatch(line);
+      return match == null || !_checkedItems.contains(match.group(1));
+    });
+    return filtered.join('\n');
+  }
+
+  Widget _buildShoppingListBody() {
+    final theme = Theme.of(context);
+    final segments = _parseShoppingList(widget.note.text);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: segments.map((segment) {
+        if (segment is _ListItemSegment) {
+          final checked = _checkedItems.contains(segment.text);
+          return InkWell(
+            onTap: () => setState(() {
+              if (checked) {
+                _checkedItems.remove(segment.text);
+              } else {
+                _checkedItems.add(segment.text);
+              }
+            }),
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Icon(
+                      checked ? Icons.check_box : Icons.check_box_outline_blank,
+                      size: 18,
+                      color: checked
+                          ? theme.colorScheme.onSurfaceVariant
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      segment.text,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: checked
+                            ? theme.colorScheme.onSurfaceVariant.withAlpha(128)
+                            : null,
+                        decoration: checked ? TextDecoration.lineThrough : null,
+                        decorationColor: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        } else {
+          final textSeg = segment as _TextSegment;
+          return SelectionArea(
+            child: MarkdownBody(
+              data: _preserveBlankLines(textSeg.text),
+              softLineBreak: true,
+              onTapLink: (_, href, _) {
+                if (href != null) {
+                  launchUrl(
+                    Uri.parse(href),
+                    mode: LaunchMode.externalApplication,
+                  );
+                }
+              },
+            ),
+          );
+        }
+      }).toList(),
+    );
+  }
+
+  static List<_ShoppingSegment> _parseShoppingList(String text) {
+    final lines = text.split('\n');
+    final segments = <_ShoppingSegment>[];
+    final buffer = StringBuffer();
+
+    for (final line in lines) {
+      final match = RegExp(r'^-\s+(.+)$').firstMatch(line);
+      if (match != null) {
+        final buffered = buffer.toString().trimRight();
+        if (buffered.isNotEmpty) {
+          segments.add(_TextSegment(buffered));
+          buffer.clear();
+        }
+        segments.add(_ListItemSegment(match.group(1)!));
+      } else {
+        buffer.writeln(line);
+      }
+    }
+
+    final remaining = buffer.toString().trimRight();
+    if (remaining.isNotEmpty) segments.add(_TextSegment(remaining));
+
+    return segments;
+  }
+}
+
+sealed class _ShoppingSegment {}
+
+class _TextSegment extends _ShoppingSegment {
+  final String text;
+  _TextSegment(this.text);
+}
+
+class _ListItemSegment extends _ShoppingSegment {
+  final String text;
+  _ListItemSegment(this.text);
 }
 
 /// Clips [child] to [maxHeight] when [collapsed], and calls [onOverflowDetected]
