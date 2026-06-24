@@ -291,6 +291,29 @@ class BackendClient {
     }
   }
 
+  Future<List<NoteHistoryEntry>> getNoteHistory(String noteId) async {
+    final response = await http
+        .get(
+          Uri.parse(
+            '$baseUrl/api/notes/history?noteId=${Uri.encodeQueryComponent(noteId)}',
+          ),
+          headers: _headers,
+        )
+        .timeout(_timeout);
+
+    _checkUnauthorized(response.statusCode);
+    if (response.statusCode == 403) throw Exception('Forbidden');
+    if (response.statusCode == 404) throw Exception('Note not found');
+    if (response.statusCode != 200) {
+      throw Exception('Failed to load note history: ${response.statusCode}');
+    }
+
+    final list = jsonDecode(response.body) as List<dynamic>;
+    return list
+        .map((e) => NoteHistoryEntry.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<String> createTask({
     required String text,
     String? rrule,
