@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { editOrCreateNote, deleteNote, acquireNoteLock, releaseNoteLock, refreshNoteLock } from '../note_queries.js';
+import { editOrCreateNote, deleteNote, acquireNoteLock, releaseNoteLock, refreshNoteLock, getNoteHistory } from '../note_queries.js';
 import { requireAuth, type AuthVariables } from '../middleware.js';
 import { CollaboratorInfo, NoteFormData } from '../models.js';
 
@@ -159,6 +159,23 @@ notes.patch('/edit', async (c) => {
     }
 
     return new Response(null, { status: 204 });
+});
+
+notes.get('/history', async (c) => {
+    const user = c.get('user');
+    const noteId = c.req.query('noteId');
+    if (!noteId?.trim()) return c.json({ error: 'noteId is required' }, 400);
+
+    try {
+        const history = await getNoteHistory(user.id, noteId);
+        return c.json(history);
+    } catch (e) {
+        const message = e instanceof Error ? e.message : 'Unknown error';
+        if (message === 'Note not found') return c.json({ error: message }, 404);
+        if (message === 'Forbidden') return c.json({ error: message }, 403);
+        console.error('[GET /api/notes/history] getNoteHistory failed:', e);
+        return c.json({ error: message }, 500);
+    }
 });
 
 export default notes;

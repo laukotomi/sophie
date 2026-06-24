@@ -287,6 +287,20 @@ class _NoteCardState extends State<NoteCard> {
     );
   }
 
+  MarkdownStyleSheet get _headingStyleSheet {
+    final theme = Theme.of(context);
+    return MarkdownStyleSheet.fromTheme(theme).copyWith(
+      h1: theme.textTheme.headlineSmall?.copyWith(fontSize: 26),
+      h2: theme.textTheme.titleLarge?.copyWith(fontSize: 20),
+      h1Padding: const EdgeInsets.only(top: 0, bottom: 8),
+      h2Padding: const EdgeInsets.only(top: 16, bottom: 8),
+      h3Padding: const EdgeInsets.only(top: 8, bottom: 8),
+      h4Padding: const EdgeInsets.only(top: 8, bottom: 8),
+      h5Padding: const EdgeInsets.only(top: 8, bottom: 8),
+      h6Padding: const EdgeInsets.only(top: 8, bottom: 8),
+    );
+  }
+
   Widget _buildNoteBody() {
     final content = widget.note.shoppingList
         ? _buildShoppingListBody()
@@ -294,6 +308,7 @@ class _NoteCardState extends State<NoteCard> {
             child: MarkdownBody(
               data: _preserveBlankLines(widget.note.text),
               softLineBreak: true,
+              styleSheet: _headingStyleSheet,
               onTapLink: (_, href, _) {
                 if (href != null) {
                   launchUrl(
@@ -440,6 +455,7 @@ class _NoteCardState extends State<NoteCard> {
             child: MarkdownBody(
               data: _preserveBlankLines(textSeg.text),
               softLineBreak: true,
+              styleSheet: _headingStyleSheet,
               onTapLink: (_, href, _) {
                 if (href != null) {
                   launchUrl(

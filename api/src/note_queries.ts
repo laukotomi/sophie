@@ -10,6 +10,7 @@ import { noteDirPath, noteFilePath } from './utils.js';
 import { NoteFormData } from './models.js';
 
 type Tx = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
+type Db = typeof db;
 type UploadedFile = { id: string; name: string; type: string; size: number };
 
 export async function editOrCreateNote(
@@ -163,6 +164,15 @@ export async function refreshNoteLock(userId: string, noteId: string): Promise<v
     if (updated.length === 0) throw new Error('Lock not held');
 }
 
+export async function getNoteHistory(userId: string, noteId: string): Promise<Array<{ id: number; text: string; createdAt: Date }>> {
+    await assertEditAccess(db, noteId, userId);
+    return db
+        .select({ id: noteHistory.id, text: noteHistory.text, createdAt: noteHistory.createdAt })
+        .from(noteHistory)
+        .where(eq(noteHistory.noteId, noteId))
+        .orderBy(desc(noteHistory.createdAt));
+}
+
 export async function deleteNote(userId: string, noteId: string): Promise<void> {
     const [existing] = await db
         .select({ id: note.id, owner: note.owner })
@@ -207,7 +217,7 @@ async function uploadFiles(
 }
 
 async function assertEditAccess(
-    tx: Tx,
+    tx: Tx | Db,
     noteId: string,
     userId: string,
 ): Promise<{ id: string; owner: string; text: string; editingBy: string | null }> {

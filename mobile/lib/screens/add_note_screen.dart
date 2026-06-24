@@ -61,6 +61,17 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     _textController = MarkdownTextController(
       text: widget.existingNote?.text ?? '',
     );
+    // Collapse any lingering selection to the end of the text after the first
+    // frame. autofocus + pre-filled text can leave the IME in a selection mode
+    // where one handle is pinned, making taps extend the selection instead of
+    // repositioning the cursor.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _textController.selection = TextSelection.collapsed(
+          offset: _textController.text.length,
+        );
+      }
+    });
     _fixedPosition = widget.existingNote?.position;
     _color = widget.existingNote?.color;
     _dontFold = widget.existingNote?.dontFold ?? false;
