@@ -4,14 +4,14 @@ class NoteSettingsDialog extends StatefulWidget {
   final int? initialPosition;
   final String? initialColor;
   final bool initialDontFold;
-  final bool initialShoppingList;
+  final bool initialTodoList;
   final List<String?> palette;
   final Color Function(String) contrastColor;
   final void Function(
     int? position,
     String? color,
     bool dontFold,
-    bool shoppingList,
+    bool todoList,
   )
   onApply;
 
@@ -20,7 +20,7 @@ class NoteSettingsDialog extends StatefulWidget {
     required this.initialPosition,
     required this.initialColor,
     this.initialDontFold = false,
-    this.initialShoppingList = false,
+    this.initialTodoList = false,
     required this.palette,
     required this.contrastColor,
     required this.onApply,
@@ -34,7 +34,7 @@ class _NoteSettingsDialogState extends State<NoteSettingsDialog> {
   late final TextEditingController _controller;
   late String? _selectedColor;
   late bool _dontFold;
-  late bool _shoppingList;
+  late bool _todoList;
 
   @override
   void initState() {
@@ -44,7 +44,7 @@ class _NoteSettingsDialogState extends State<NoteSettingsDialog> {
     );
     _selectedColor = widget.initialColor;
     _dontFold = widget.initialDontFold;
-    _shoppingList = widget.initialShoppingList;
+    _todoList = widget.initialTodoList;
   }
 
   @override
@@ -122,9 +122,9 @@ class _NoteSettingsDialogState extends State<NoteSettingsDialog> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Shopping list'),
-              value: _shoppingList,
-              onChanged: (v) => setState(() => _shoppingList = v),
+              title: const Text('Todo list'),
+              value: _todoList,
+              onChanged: (v) => setState(() => _todoList = v),
             ),
           ],
         ),
@@ -139,7 +139,7 @@ class _NoteSettingsDialogState extends State<NoteSettingsDialog> {
             final raw = _controller.text.trim();
             final position = raw.isEmpty ? null : int.tryParse(raw);
             Navigator.of(context).pop();
-            widget.onApply(position, _selectedColor, _dontFold, _shoppingList);
+            widget.onApply(position, _selectedColor, _dontFold, _todoList);
           },
           child: const Text('Apply'),
         ),

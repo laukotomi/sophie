@@ -21,7 +21,7 @@ async function parseNoteForm(form: FormData | null): Promise<NoteFormData | null
     const colorRaw = form.get('color');
     const color = typeof colorRaw === 'string' && colorRaw ? colorRaw : null;
     const dontFold = form.get('dontFold') === 'true';
-    const shoppingList = form.get('shoppingList') === 'true';
+    const todoList = form.get('todoList') === 'true';
 
     const fileEntries = form.getAll('files').filter((f): f is File => f instanceof File);
     const filesData = fileEntries.map((f) => ({
@@ -37,7 +37,7 @@ async function parseNoteForm(form: FormData | null): Promise<NoteFormData | null
         fixedPosition: fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
         color,
         dontFold,
-        shoppingList,
+        todoList,
         files: filesData.length > 0 ? filesData : undefined,
     };
 }

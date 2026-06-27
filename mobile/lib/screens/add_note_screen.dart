@@ -45,7 +45,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   int? _fixedPosition;
   String? _color;
   bool _dontFold = false;
-  bool _shoppingList = false;
+  bool _todoList = false;
   String? _errorMessage;
 
   bool get _isEditing => widget.existingNote != null;
@@ -76,7 +76,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     _fixedPosition = widget.existingNote?.position;
     _color = widget.existingNote?.color;
     _dontFold = widget.existingNote?.dontFold ?? false;
-    _shoppingList = widget.existingNote?.shoppingList ?? false;
+    _todoList = widget.existingNote?.todoList ?? false;
     _existingFiles = List.of(widget.existingNote?.files ?? []);
     if (_isEditing) _startLockHeartbeat();
     // Pre-populate collaborators from the existing note, matching against users
@@ -140,15 +140,15 @@ class _AddNoteScreenState extends State<AddNoteScreen>
         initialPosition: _fixedPosition,
         initialColor: _color,
         initialDontFold: _dontFold,
-        initialShoppingList: _shoppingList,
+        initialTodoList: _todoList,
         palette: kNotePalette,
         contrastColor: noteContrastColor,
-        onApply: (position, color, dontFold, shoppingList) {
+        onApply: (position, color, dontFold, todoList) {
           setState(() {
             _fixedPosition = position;
             _color = color;
             _dontFold = dontFold;
-            _shoppingList = shoppingList;
+            _todoList = todoList;
           });
         },
       ),
@@ -271,7 +271,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
               child: ListView.separated(
                 controller: scrollController,
                 itemCount: history.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (_, index) {
                   final entry = history[index];
                   final preview = entry.text.trim().replaceAll('\n', ' ');
@@ -424,7 +424,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
           fixedPosition: _fixedPosition,
           color: _color,
           dontFold: _dontFold,
-          shoppingList: _shoppingList,
+          todoList: _todoList,
           files: fileArgs,
         );
       } else {
@@ -434,7 +434,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
           fixedPosition: _fixedPosition,
           color: _color,
           dontFold: _dontFold,
-          shoppingList: _shoppingList,
+          todoList: _todoList,
           files: fileArgs,
         );
       }

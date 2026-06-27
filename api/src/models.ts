@@ -4,7 +4,7 @@ export type NoteFormData = {
     fixedPosition: number | undefined;
     color: string | null;
     dontFold: boolean;
-    shoppingList: boolean;
+    todoList: boolean;
     files: NoteFile[] | undefined;
 };
 

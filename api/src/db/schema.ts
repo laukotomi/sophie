@@ -9,7 +9,7 @@ export const note = pgTable('note', {
     text: text('text').notNull(),
     color: text('color'),
     dontFold: boolean('dont_fold').notNull().default(false),
-    shoppingList: boolean('shopping_list').notNull().default(false),
+    todoList: boolean('todo_list').notNull().default(false),
     owner: text('owner')
         .notNull()
         .references(() => user.id, { onDelete: 'cascade' }),

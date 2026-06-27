@@ -60,7 +60,7 @@ class Note {
   String text;
   final String? color;
   final bool dontFold;
-  final bool shoppingList;
+  final bool todoList;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String right;
@@ -75,7 +75,7 @@ class Note {
     required this.text,
     this.color,
     this.dontFold = false,
-    this.shoppingList = false,
+    this.todoList = false,
     required this.createdAt,
     required this.updatedAt,
     required this.right,
@@ -91,7 +91,7 @@ class Note {
     text: json['text'] as String,
     color: json['color'] as String?,
     dontFold: json['dontFold'] as bool? ?? false,
-    shoppingList: json['shoppingList'] as bool? ?? false,
+    todoList: json['todoList'] as bool? ?? false,
     createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
     updatedAt: DateTime.parse(json['updatedAt'] as String).toLocal(),
     right: json['right'] as String,
@@ -111,7 +111,7 @@ class Note {
     'text': text,
     'color': color,
     'dontFold': dontFold,
-    'shoppingList': shoppingList,
+    'todoList': todoList,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     'right': right,

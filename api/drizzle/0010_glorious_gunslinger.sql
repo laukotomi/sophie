@@ -1,0 +1,1 @@
+ALTER TABLE "note" RENAME COLUMN "shopping_list" TO "todo_list";

@@ -146,7 +146,7 @@ class _NoteCardState extends State<NoteCard> {
 
     if (!ctx.mounted) return;
     final originalText = widget.note.text;
-    widget.note.text = widget.note.shoppingList && _checkedItems.isNotEmpty
+    widget.note.text = widget.note.todoList && _checkedItems.isNotEmpty
         ? _removeCheckedItems(latestText)
         : latestText;
     setState(() => _acquiringLock = false);
@@ -302,8 +302,8 @@ class _NoteCardState extends State<NoteCard> {
   }
 
   Widget _buildNoteBody() {
-    final content = widget.note.shoppingList
-        ? _buildShoppingListBody()
+    final content = widget.note.todoList
+        ? _buildTodoListBody()
         : SelectionArea(
             child: MarkdownBody(
               data: _preserveBlankLines(widget.note.text),
@@ -388,7 +388,7 @@ class _NoteCardState extends State<NoteCard> {
   String _pad(int n) => n.toString().padLeft(2, '0');
 
   /// Returns [text] with any list items whose text appears in [_checkedItems]
-  /// removed. Used to strip ticked-off shopping items before opening the editor.
+  /// removed. Used to strip ticked-off todo items before opening the editor.
   String _removeCheckedItems(String text) {
     final lines = text.split('\n');
     final filtered = lines.where((line) {
@@ -398,9 +398,9 @@ class _NoteCardState extends State<NoteCard> {
     return filtered.join('\n');
   }
 
-  Widget _buildShoppingListBody() {
+  Widget _buildTodoListBody() {
     final theme = Theme.of(context);
-    final segments = _parseShoppingList(widget.note.text);
+    final segments = _parseTodoList(widget.note.text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: segments.map((segment) {
@@ -471,9 +471,9 @@ class _NoteCardState extends State<NoteCard> {
     );
   }
 
-  static List<_ShoppingSegment> _parseShoppingList(String text) {
+  static List<_TodoSegment> _parseTodoList(String text) {
     final lines = text.split('\n');
-    final segments = <_ShoppingSegment>[];
+    final segments = <_TodoSegment>[];
     final buffer = StringBuffer();
 
     void flushBuffer() {
@@ -506,19 +506,19 @@ class _NoteCardState extends State<NoteCard> {
   }
 }
 
-sealed class _ShoppingSegment {}
+sealed class _TodoSegment {}
 
-class _TextSegment extends _ShoppingSegment {
+class _TextSegment extends _TodoSegment {
   final String text;
   _TextSegment(this.text);
 }
 
-class _ListItemSegment extends _ShoppingSegment {
+class _ListItemSegment extends _TodoSegment {
   final String text;
   _ListItemSegment(this.text);
 }
 
-class _SpacerSegment extends _ShoppingSegment {}
+class _SpacerSegment extends _TodoSegment {}
 
 /// Clips [child] to [maxHeight] when [collapsed], and calls [onOverflowDetected]
 /// post-frame whenever the child's natural height exceeds [maxHeight].

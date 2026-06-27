@@ -52,7 +52,7 @@ class BackendClient {
     int? fixedPosition,
     String? color,
     bool dontFold = false,
-    bool shoppingList = false,
+    bool todoList = false,
     required List<({String path, String name})> files,
   }) async {
     final request =
@@ -74,7 +74,7 @@ class BackendClient {
       request.fields['color'] = color;
     }
     request.fields['dontFold'] = dontFold.toString();
-    request.fields['shoppingList'] = shoppingList.toString();
+    request.fields['todoList'] = todoList.toString();
     for (final file in files) {
       request.files.add(
         await http.MultipartFile.fromPath(
@@ -127,7 +127,7 @@ class BackendClient {
     int? fixedPosition,
     String? color,
     bool dontFold = false,
-    bool shoppingList = false,
+    bool todoList = false,
     List<({String path, String name})> files = const [],
   }) async {
     final request = await _buildNoteRequest(
@@ -137,7 +137,7 @@ class BackendClient {
       fixedPosition: fixedPosition,
       color: color,
       dontFold: dontFold,
-      shoppingList: shoppingList,
+      todoList: todoList,
       files: files,
     );
     final response = await http.Response.fromStream(
@@ -157,7 +157,7 @@ class BackendClient {
     int? fixedPosition,
     String? color,
     bool dontFold = false,
-    bool shoppingList = false,
+    bool todoList = false,
     List<({String path, String name})> files = const [],
   }) async {
     final request = await _buildNoteRequest(
@@ -168,7 +168,7 @@ class BackendClient {
       fixedPosition: fixedPosition,
       color: color,
       dontFold: dontFold,
-      shoppingList: shoppingList,
+      todoList: todoList,
       files: files,
     );
     final response = await http.Response.fromStream(

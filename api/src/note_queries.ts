@@ -33,7 +33,7 @@ export async function editOrCreateNote(
         text: noteData.text,
         color: noteData.color,
         dontFold: noteData.dontFold,
-        shoppingList: noteData.shoppingList,
+        todoList: noteData.todoList,
     }
 
     try {
