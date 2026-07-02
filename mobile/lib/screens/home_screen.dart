@@ -4,11 +4,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
-import 'package:sophie/backend.dart';
+import 'package:sophie/models/dashboard_data.dart';
+import 'package:sophie/models/pending_note_edit.dart';
+import 'package:sophie/models/task.dart';
+import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/notes_screen.dart';
 import 'package:sophie/services/alert_notifications.dart';
+import 'package:sophie/services/backend_note.dart';
 import 'package:sophie/screens/tasks_screen.dart';
-import 'package:sophie/storage.dart';
+import 'package:sophie/services/storage.dart';
 
 class HomeScreen extends StatefulWidget {
   final BackendClient client;
@@ -78,6 +82,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<DashboardData> _loadData() async {
+    final hadConflict = await _syncPendingEdits();
+    if (hadConflict) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'An offline edit conflicted with a newer version. '
+                'The most recent was kept. Check note history if you need to recover yours.',
+              ),
+              duration: Duration(seconds: 10),
+            ),
+          );
+        }
+      });
+    }
     try {
       final data = await widget.client.getDashboardData();
       await AlertNotifications.rescheduleAll(data.tasks);
@@ -96,6 +116,55 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       rethrow;
     }
+  }
+
+  /// Drains the offline edit queue, syncing each pending edit to the server.
+  /// Returns true if any edit resulted in a LWW conflict.
+  Future<bool> _syncPendingEdits() async {
+    List<PendingNoteEdit> pending;
+    try {
+      pending = await Storage.getPendingNoteEdits();
+    } catch (_) {
+      return false;
+    }
+    if (pending.isEmpty) return false;
+
+    bool anyConflict = false;
+    for (final edit in pending) {
+      try {
+        if (edit.isNew) {
+          await widget.client.note.saveNote(
+            null,
+            edit.text,
+            collaborators: edit.collaborators,
+            color: edit.color,
+            dontFold: edit.dontFold,
+            todoList: edit.todoList,
+          );
+        } else {
+          final conflicted = await widget.client.note.syncOfflineEdit(
+            noteId: edit.noteId,
+            text: edit.text,
+            collaborators: edit.collaborators,
+            color: edit.color,
+            dontFold: edit.dontFold,
+            todoList: edit.todoList,
+            baseUpdatedAt: edit.baseUpdatedAt!,
+            localSavedAt: edit.localSavedAt,
+          );
+          if (conflicted) anyConflict = true;
+        }
+        await Storage.removePendingNoteEdit(edit.noteId);
+      } on UnauthorizedException {
+        await Storage.removePendingNoteEdit(edit.noteId);
+      } on NoteGoneException {
+        // Note deleted or access revoked — discard silently.
+        await Storage.removePendingNoteEdit(edit.noteId);
+      } catch (_) {
+        // Network error or note currently locked — leave for next attempt.
+      }
+    }
+    return anyConflict;
   }
 
   void _refresh() {
@@ -154,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 data: data,
                 client: widget.client,
                 onLoggedOut: widget.onLoggedOut,
-                onRefresh: () async => _refresh(),
+                onRefresh: _refresh,
                 usingCache: _usingCache,
               ),
             ],

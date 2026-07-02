@@ -1,11 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:sophie/backend.dart';
+import 'package:sophie/models/app_user.dart';
+import 'package:sophie/models/note.dart';
+import 'package:sophie/models/note_file.dart';
+import 'package:sophie/models/note_history_entry.dart';
+import 'package:sophie/models/pending_note_edit.dart';
+import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/add_collaborator_screen.dart';
 import 'package:sophie/services/markdown_text_controller.dart';
+import 'package:sophie/services/storage.dart';
 import 'package:sophie/utils/note_colors.dart';
+import 'package:sophie/widgets/note_history_sheet.dart';
 import 'package:sophie/widgets/note_settings_dialog.dart';
+import 'package:sophie/widgets/type_to_confirm_dialog.dart';
 
 class AddNoteScreen extends StatefulWidget {
   final BackendClient client;
@@ -13,6 +21,8 @@ class AddNoteScreen extends StatefulWidget {
   final String currentUserId;
   // When non-null the screen is in edit mode
   final Note? existingNote;
+  // True when the note was opened without a server lock (no connectivity).
+  final bool offlineMode;
 
   const AddNoteScreen({
     super.key,
@@ -20,6 +30,7 @@ class AddNoteScreen extends StatefulWidget {
     required this.users,
     required this.currentUserId,
     this.existingNote,
+    this.offlineMode = false,
   });
 
   @override
@@ -78,7 +89,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     _dontFold = widget.existingNote?.dontFold ?? false;
     _todoList = widget.existingNote?.todoList ?? false;
     _existingFiles = List.of(widget.existingNote?.files ?? []);
-    if (_isEditing) _startLockHeartbeat();
+    if (_isEditing && !widget.offlineMode) _startLockHeartbeat();
     // Pre-populate collaborators from the existing note, matching against users
     _collaborators =
         widget.existingNote?.collaborators
@@ -124,7 +135,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
 
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await widget.client.deleteFile(file.id);
+      await widget.client.noteFile.deleteFile(file.id);
       if (mounted) setState(() => _existingFiles.remove(file));
     } catch (_) {
       messenger.showSnackBar(
@@ -200,7 +211,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   void _startLockHeartbeat() {
     _lockHeartbeat = Timer.periodic(const Duration(seconds: 20), (_) async {
       try {
-        await widget.client.refreshNoteLock(widget.existingNote!.id);
+        await widget.client.note.refreshNoteLock(widget.existingNote!.id);
         if (mounted && _lockError) setState(() => _lockError = false);
       } catch (_) {
         if (mounted && !_lockError) setState(() => _lockError = true);
@@ -216,7 +227,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
       _lockHeartbeat?.cancel();
       _lockHeartbeat = null;
     } else if (state == AppLifecycleState.resumed && _lockHeartbeat == null) {
-      _startLockHeartbeat();
+      if (!widget.offlineMode) _startLockHeartbeat();
     }
   }
 
@@ -224,7 +235,9 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     setState(() => _loadingHistory = true);
     List<NoteHistoryEntry> history;
     try {
-      history = await widget.client.getNoteHistory(widget.existingNote!.id);
+      history = await widget.client.note.getNoteHistory(
+        widget.existingNote!.id,
+      );
     } catch (_) {
       if (mounted) {
         setState(() => _loadingHistory = false);
@@ -247,136 +260,26 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.3,
-        maxChildSize: 0.85,
-        expand: false,
-        builder: (_, scrollController) => Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Theme.of(ctx).colorScheme.onSurfaceVariant.withAlpha(80),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text('Version history', style: Theme.of(ctx).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            const Divider(height: 1),
-            Expanded(
-              child: ListView.separated(
-                controller: scrollController,
-                itemCount: history.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (_, index) {
-                  final entry = history[index];
-                  final preview = entry.text.trim().replaceAll('\n', ' ');
-                  final truncated = preview.length > 100
-                      ? '${preview.substring(0, 100)}…'
-                      : preview;
-                  return ListTile(
-                    title: Text(_formatHistoryDate(entry.createdAt)),
-                    subtitle: Text(
-                      truncated,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () async {
-                      final confirmed = await showDialog<bool>(
-                        context: ctx,
-                        builder: (d) => AlertDialog(
-                          title: const Text('Load this version?'),
-                          content: const Text(
-                            'Your current text will be replaced. Save afterwards to restore it.',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(d).pop(false),
-                              child: const Text('Cancel'),
-                            ),
-                            FilledButton(
-                              onPressed: () => Navigator.of(d).pop(true),
-                              child: const Text('Load'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirmed == true && ctx.mounted) {
-                        _textController.text = entry.text;
-                        Navigator.of(ctx).pop();
-                      }
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+      builder: (_) => NoteHistorySheet(
+        history: history,
+        onLoad: (text) => _textController.text = text,
       ),
     );
-  }
-
-  String _formatHistoryDate(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays == 1) return 'Yesterday';
-    if (diff.inDays < 7) return '${diff.inDays} days ago';
-    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 
   Future<void> _deleteNote() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) {
-        final confirmController = TextEditingController();
-        return StatefulBuilder(
-          builder: (ctx, setState) => AlertDialog(
-            title: const Text('Delete note'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('This cannot be undone. Type "yes" to confirm.'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: confirmController,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    hintText: 'yes',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: confirmController.text.trim().toLowerCase() == 'yes'
-                    ? () => Navigator.of(ctx).pop(true)
-                    : null,
-                child: const Text('Delete'),
-              ),
-            ],
-          ),
-        );
-      },
+      builder: (_) => const TypeToConfirmDialog(
+        title: 'Delete note',
+        message: 'This cannot be undone. Type "yes" to confirm.',
+        confirmLabel: 'Delete',
+      ),
     );
     if (confirmed != true || !mounted) return;
     setState(() => _deleting = true);
     try {
-      await widget.client.deleteNote(widget.existingNote!.id);
+      await widget.client.note.deleteNote(widget.existingNote!.id);
       if (mounted) Navigator.of(context).pop(true);
     } on UnauthorizedException {
       // handled by onUnauthorized
@@ -391,7 +294,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     if (!_isEditing) return;
     setState(() => _releasingLock = true);
     try {
-      await widget.client.releaseNoteLock(widget.existingNote!.id);
+      await widget.client.note.releaseNoteLock(widget.existingNote!.id);
     } catch (_) {
       // Ignore — lock will expire on its own.
     } finally {
@@ -407,6 +310,47 @@ class _AddNoteScreenState extends State<AddNoteScreen>
       _errorMessage = null;
     });
 
+    // Offline path: queue the edit/creation locally and pop immediately.
+    if (widget.offlineMode || (_isEditing && _lockError)) {
+      try {
+        final noteId = _isEditing
+            ? widget.existingNote!.id
+            : 'local_${DateTime.now().millisecondsSinceEpoch}';
+        await Storage.addPendingNoteEdit(
+          PendingNoteEdit(
+            noteId: noteId,
+            isNew: !_isEditing,
+            text: _textController.text.trim(),
+            color: _color,
+            dontFold: _dontFold,
+            todoList: _todoList,
+            collaborators: _collaborators
+                .map((c) => (userId: c.$1.id, right: c.$2))
+                .toList(),
+            baseUpdatedAt: _isEditing
+                ? widget.existingNote!.updatedAt.toUtc().toIso8601String()
+                : null,
+            localSavedAt: DateTime.now().toUtc().toIso8601String(),
+          ),
+        );
+        // Pop with the saved text so note_card can update in-memory immediately.
+        // For new notes pop true (same as a successful online create).
+        if (mounted) {
+          Navigator.of(
+            context,
+          ).pop(_isEditing ? _textController.text.trim() : true);
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _saving = false;
+            _errorMessage = 'Failed to save offline. Please try again.';
+          });
+        }
+      }
+      return;
+    }
+
     final collabs = _collaborators
         .map((c) => (userId: c.$1.id, right: c.$2))
         .toList();
@@ -416,28 +360,16 @@ class _AddNoteScreenState extends State<AddNoteScreen>
         .toList();
 
     try {
-      if (_isEditing) {
-        await widget.client.updateNote(
-          widget.existingNote!.id,
-          _textController.text.trim(),
-          collaborators: collabs,
-          fixedPosition: _fixedPosition,
-          color: _color,
-          dontFold: _dontFold,
-          todoList: _todoList,
-          files: fileArgs,
-        );
-      } else {
-        await widget.client.createNote(
-          _textController.text.trim(),
-          collaborators: collabs,
-          fixedPosition: _fixedPosition,
-          color: _color,
-          dontFold: _dontFold,
-          todoList: _todoList,
-          files: fileArgs,
-        );
-      }
+      await widget.client.note.saveNote(
+        _isEditing ? widget.existingNote!.id : null,
+        _textController.text.trim(),
+        collaborators: collabs,
+        fixedPosition: _fixedPosition,
+        color: _color,
+        dontFold: _dontFold,
+        todoList: _todoList,
+        files: fileArgs,
+      );
       if (mounted) Navigator.of(context).pop(true);
     } on UnauthorizedException {
       // onUnauthorized callback already handles logout
@@ -491,15 +423,14 @@ class _AddNoteScreenState extends State<AddNoteScreen>
                 )
               : null,
           actions: [
-            if (_lockError)
-              const Tooltip(
-                message: 'Could not extend edit lock — will retry',
+            if (_lockError || widget.offlineMode)
+              Tooltip(
+                message: widget.offlineMode
+                    ? 'Offline — changes will sync when connected'
+                    : 'Could not extend edit lock — will retry',
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4),
-                  child: Icon(
-                    Icons.warning_amber_rounded,
-                    color: Colors.orange,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Icon(Icons.cloud_off, color: Colors.orange),
                 ),
               ),
             IconButton(

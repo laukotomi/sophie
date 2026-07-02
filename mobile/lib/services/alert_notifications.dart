@@ -5,9 +5,11 @@ import 'package:alarm/alarm.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:sophie/backend.dart';
+import 'package:sophie/models/task.dart';
+import 'package:sophie/models/task_alert.dart';
+import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/snooze_picker_screen.dart';
-import 'package:sophie/storage.dart';
+import 'package:sophie/services/storage.dart';
 
 /// Manages scheduling of task alert notifications.
 ///
@@ -23,8 +25,10 @@ class AlertNotifications {
   static final _refreshController = StreamController<void>.broadcast();
   static Stream<void> get refreshRequests => _refreshController.stream;
 
+  static final _snoozeQueueController = StreamController<void>.broadcast();
+  static Stream<void> get snoozeQueueChanges => _snoozeQueueController.stream;
+
   static const _actionsChannelKey = 'task_alarm_actions';
-  static const _snoozeChannelKey = 'task_snooze_alarm';
   static const _stopActionKey = 'STOP_ALARM';
   static const _doneActionKey = 'MARK_DONE';
   static const _snoozeActionKey = 'SNOOZE';
@@ -36,7 +40,7 @@ class AlertNotifications {
   /// Initialises the alarm package.
   /// Safe to call from [main] before [runApp].
   static Future<void> init() async {
-    await _initActionNotifications();
+    await _initAwesomeNotifications();
     await Alarm.init();
   }
 
@@ -193,7 +197,7 @@ class AlertNotifications {
     return h + alertIndex;
   }
 
-  static Future<void> _initActionNotifications() async {
+  static Future<void> _initAwesomeNotifications() async {
     await AwesomeNotifications().initialize(null, [
       NotificationChannel(
         channelGroupKey: 'sophie_tasks',
@@ -203,16 +207,6 @@ class AlertNotifications {
         importance: NotificationImportance.Max,
         playSound: false,
         enableVibration: false,
-      ),
-      NotificationChannel(
-        channelGroupKey: 'sophie_tasks',
-        channelKey: _snoozeChannelKey,
-        channelName: 'Task snooze reminders',
-        channelDescription: 'Snoozed task reminders',
-        importance: NotificationImportance.Max,
-        playSound: true,
-        enableVibration: true,
-        defaultPrivacy: NotificationPrivacy.Public,
       ),
     ]);
 
@@ -232,9 +226,13 @@ class AlertNotifications {
       return;
     }
 
+    await Storage.init();
+
     if (action.buttonKeyPressed == _snoozeActionKey) {
       await cancelByAlarmId(alarmId);
-      navigatorKey.currentState?.push(
+      await Storage.addSnoozePending(alarmId, taskId, action.body);
+      _snoozeQueueController.add(null);
+      await navigatorKey.currentState?.push<void>(
         MaterialPageRoute(
           builder: (_) => SnoozePickerScreen(
             alarmId: alarmId,
@@ -253,18 +251,13 @@ class AlertNotifications {
   }
 
   static Future<void> _markTaskDone(String taskId) async {
-    await Storage.init();
     final serverUrl = Storage.serverUrl;
     final token = Storage.authToken;
     if (serverUrl == null || token == null) return;
 
     final client = BackendClient(baseUrl: serverUrl, token: token);
-    try {
-      await client.setTaskDone(taskId: taskId, done: true);
-      await cancelForTask(taskId);
-      _refreshController.add(null);
-    } finally {
-      client.close();
-    }
+    await client.task.setTaskDone(taskId: taskId, done: true);
+    await cancelForTask(taskId);
+    _refreshController.add(null);
   }
 }

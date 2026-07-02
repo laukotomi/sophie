@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:rrule_generator/rrule_generator.dart';
-import 'package:sophie/backend.dart';
+import 'package:sophie/models/app_user.dart';
+import 'package:sophie/models/task.dart';
+import 'package:sophie/models/task_alert.dart';
+import 'package:sophie/services/backend.dart';
 import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/widgets/task_settings_dialog.dart';
 
@@ -175,7 +178,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       String taskId;
       if (_isEditing) {
         taskId = widget.existingTask!.id;
-        await widget.client.updateTask(
+        await widget.client.task.updateTask(
           taskId: taskId,
           text: _textController.text.trim(),
           rrule: _rrule.isNotEmpty ? _rrule : null,
@@ -187,7 +190,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               .toList(),
         );
       } else {
-        taskId = await widget.client.createTask(
+        taskId = await widget.client.task.createTask(
           text: _textController.text.trim(),
           rrule: _rrule.isNotEmpty ? _rrule : null,
           dueAt: _dueAt,
@@ -324,7 +327,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         if (confirmed != true || !mounted) return;
                         setState(() => _deleting = true);
                         try {
-                          await widget.client.deleteTask(
+                          await widget.client.task.deleteTask(
                             taskId: widget.existingTask!.id,
                           );
                           await AlertNotifications.cancelForTask(

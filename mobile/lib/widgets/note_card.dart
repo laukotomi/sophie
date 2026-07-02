@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:sophie/models/app_user.dart';
+import 'package:sophie/models/note.dart';
 import 'package:sophie/screens/add_note_screen.dart';
+import 'package:sophie/services/backend_note.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:sophie/backend.dart';
+import 'package:sophie/services/backend.dart';
 import 'package:sophie/widgets/file_download_chip.dart';
 import 'package:sophie/widgets/note_chip.dart';
 
@@ -122,8 +125,9 @@ class _NoteCardState extends State<NoteCard> {
     setState(() => _acquiringLock = true);
 
     String latestText;
+    bool offlineMode = false;
     try {
-      latestText = await widget.client.acquireNoteLock(widget.note.id);
+      latestText = await widget.client.note.acquireNoteLock(widget.note.id);
     } on NoteLockedException {
       if (!ctx.mounted) return;
       setState(() => _acquiringLock = false);
@@ -134,14 +138,12 @@ class _NoteCardState extends State<NoteCard> {
           ),
         ),
       );
+
       return;
     } catch (_) {
-      if (!ctx.mounted) return;
-      setState(() => _acquiringLock = false);
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        const SnackBar(content: Text('Failed to open note for editing.')),
-      );
-      return;
+      // Network error: open in offline mode so the user can still edit.
+      offlineMode = true;
+      latestText = widget.note.text;
     }
 
     if (!ctx.mounted) return;
@@ -149,23 +151,28 @@ class _NoteCardState extends State<NoteCard> {
     widget.note.text = widget.note.todoList && _checkedItems.isNotEmpty
         ? _removeCheckedItems(latestText)
         : latestText;
+
     setState(() => _acquiringLock = false);
 
-    final edited = await Navigator.of(ctx).push<bool>(
+    final result = await Navigator.of(ctx).push<Object?>(
       MaterialPageRoute(
         builder: (_) => AddNoteScreen(
           client: widget.client,
           users: widget.users,
           currentUserId: widget.currentUserId,
           existingNote: widget.note,
+          offlineMode: offlineMode,
         ),
       ),
     );
-    if (edited == true) {
+
+    if (result == true) {
       widget.onEdited();
+    } else if (result is String) {
+      // Offline save: update the in-memory note text without a full refresh.
+      setState(() => widget.note.text = result);
     } else {
-      // Restore the original text so discarding doesn't permanently remove
-      // checked items from the displayed note.
+      // Discarded: restore original text (needed when checked items were removed).
       setState(() => widget.note.text = originalText);
     }
   }

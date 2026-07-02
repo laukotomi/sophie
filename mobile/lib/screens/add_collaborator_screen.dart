@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:sophie/models.dart';
+import 'package:sophie/models/app_user.dart';
 
 class AddCollaboratorScreen extends StatefulWidget {
   final List<AppUser> users;

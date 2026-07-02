@@ -7,7 +7,7 @@ import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { noteDirPath, noteFilePath } from './utils.js';
-import { NoteFormData } from './models.js';
+import { NoteFormData, CollaboratorInfo } from './models.js';
 
 type Tx = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
 type Db = typeof db;
@@ -220,9 +220,9 @@ async function assertEditAccess(
     tx: Tx | Db,
     noteId: string,
     userId: string,
-): Promise<{ id: string; owner: string; text: string; editingBy: string | null }> {
+): Promise<{ id: string; owner: string; text: string; editingBy: string | null; lockedUntil: Date | null; updatedAt: Date }> {
     const [existing] = await tx
-        .select({ id: note.id, owner: note.owner, text: note.text, editingBy: note.editingBy })
+        .select({ id: note.id, owner: note.owner, text: note.text, editingBy: note.editingBy, lockedUntil: note.lockedUntil, updatedAt: note.updatedAt })
         .from(note)
         .where(eq(note.id, noteId));
 
@@ -240,6 +240,84 @@ async function assertEditAccess(
     }
 
     return existing;
+}
+
+export type OfflineSyncData = {
+    noteId: string;
+    text: string;
+    color: string | null;
+    dontFold: boolean;
+    todoList: boolean;
+    collaborators?: CollaboratorInfo[];
+    baseUpdatedAt: string;
+    localSavedAt: string;
+};
+
+export async function syncOfflineNote(
+    userId: string,
+    data: OfflineSyncData,
+): Promise<{ conflicted: boolean }> {
+    return await db.transaction(async (tx) => {
+        const existing = await assertEditAccess(tx, data.noteId, userId);
+
+        // If another user currently holds a live lock, defer this sync.
+        const now = new Date();
+        if (
+            existing.editingBy !== null &&
+            existing.editingBy !== userId &&
+            existing.lockedUntil !== null &&
+            existing.lockedUntil > now
+        ) {
+            throw new Error('Note is currently being edited');
+        }
+
+        const baseUpdatedAt = new Date(data.baseUpdatedAt);
+        const serverUpdatedAt = existing.updatedAt;
+        const localSavedAt = new Date(data.localSavedAt);
+
+        // Allow 200 ms tolerance for timing jitter.
+        const hasConflict = serverUpdatedAt.getTime() > baseUpdatedAt.getTime() + 200;
+
+        const noteUpdate = {
+            text: data.text,
+            color: data.color,
+            dontFold: data.dontFold,
+            todoList: data.todoList,
+            editingBy: null as string | null,
+            lockedUntil: null as Date | null,
+        };
+
+        const applyUpdate = async () => {
+            await tx.update(note).set(noteUpdate).where(eq(note.id, data.noteId));
+            if (data.collaborators !== undefined) {
+                await tx.delete(collaborator).where(eq(collaborator.noteId, data.noteId));
+                if (data.collaborators.length > 0) {
+                    await tx.insert(collaborator).values(
+                        data.collaborators.map((c) => ({ noteId: data.noteId, userId: c.userId, right: c.right })),
+                    );
+                }
+            }
+        };
+
+        if (!hasConflict) {
+            await saveNoteBackup(tx, data.noteId, existing.text);
+            await applyUpdate();
+            return { conflicted: false };
+        }
+
+        // Conflict: LWW — higher timestamp wins.
+        const localWins = localSavedAt.getTime() > serverUpdatedAt.getTime();
+
+        if (localWins) {
+            await saveNoteBackup(tx, data.noteId, existing.text);
+            await applyUpdate();
+        } else {
+            // Server wins: save the offline text to history so the user can recover it.
+            await saveNoteBackup(tx, data.noteId, data.text);
+        }
+
+        return { conflicted: true };
+    });
 }
 
 async function saveNoteBackup(tx: Tx, noteId: string, text: string): Promise<void> {

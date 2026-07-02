@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:sophie/backend.dart';
+import 'package:sophie/models/app_user.dart';
+import 'package:sophie/models/task.dart';
+import 'package:sophie/models/task_alert.dart';
+import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/add_task_screen.dart';
 import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/utils/note_colors.dart';
@@ -32,7 +35,7 @@ class _TaskCardState extends State<TaskCard> {
     setState(() => _loading = true);
     final markingDone = widget.task.doneAt == null;
     try {
-      final next = await widget.client.setTaskDone(
+      final next = await widget.client.task.setTaskDone(
         taskId: widget.task.id,
         done: markingDone,
       );

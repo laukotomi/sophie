@@ -1,7 +1,7 @@
 import { db } from './db/index.js';
 import { randomUUID } from "crypto";
 import { task, taskCollaborator, taskAlert } from './db/schema.js';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, isNotNull } from 'drizzle-orm';
 import rrulePkg from 'rrule';
 import { parseDateISOString } from './utils.js';
 import { AlertInput, TaskData } from './models.js';
@@ -98,38 +98,14 @@ export async function setTaskDone(
     taskId: string,
     done: boolean,
 ): Promise<NextTaskInfo | null> {
-    const [existing] = await db
-        .select({
-            id: task.id,
-            owner: task.owner,
-            text: task.text,
-            rrule: task.rrule,
-            dueAt: task.dueAt,
-            color: task.color,
-        })
-        .from(task)
-        .where(eq(task.id, taskId));
+    const existing = await assertViewAccess(userId, taskId);
 
-    if (!existing) throw new Error('Task not found');
-
-    if (existing.owner !== userId) {
-        const [collab] = await db
-            .select({ id: taskCollaborator.id })
-            .from(taskCollaborator)
-            .where(
-                and(
-                    eq(taskCollaborator.taskId, taskId),
-                    eq(taskCollaborator.userId, userId),
-                ),
-            );
-        if (!collab) throw new Error('Forbidden');
-    }
-
-    await db.update(task)
+    const updated = await db.update(task)
         .set({ doneAt: done ? new Date() : null })
-        .where(eq(task.id, taskId));
+        .where(and(eq(task.id, taskId), done ? isNull(task.doneAt) : isNotNull(task.doneAt)))
+        .returning({ id: task.id });
 
-    if (!done || !existing.rrule || !existing.dueAt) return null;
+    if (!updated.length || !done || !existing.rrule || !existing.dueAt) return null;
 
     const nextDueAt = getNextOccurrence(existing.rrule, parseDateISOString(existing.dueAt));
     if (!nextDueAt) return null;
@@ -171,4 +147,35 @@ async function assertEditAccess(userId: string, taskId: string) {
 
     if (!existing) throw new Error('Task not found');
     if (existing.owner !== userId) throw new Error('Forbidden');
+}
+
+async function assertViewAccess(userId: string, taskId: string) {
+    const [existing] = await db
+        .select({
+            id: task.id,
+            owner: task.owner,
+            text: task.text,
+            rrule: task.rrule,
+            dueAt: task.dueAt,
+            color: task.color,
+        })
+        .from(task)
+        .where(eq(task.id, taskId));
+
+    if (!existing) throw new Error('Task not found');
+
+    if (existing.owner !== userId) {
+        const [collab] = await db
+            .select({ id: taskCollaborator.id })
+            .from(taskCollaborator)
+            .where(
+                and(
+                    eq(taskCollaborator.taskId, taskId),
+                    eq(taskCollaborator.userId, userId),
+                ),
+            );
+        if (!collab) throw new Error('Forbidden');
+    }
+
+    return existing;
 }

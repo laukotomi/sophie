@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:sophie/backend.dart';
+import 'package:sophie/models/dashboard_data.dart';
+import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/add_note_screen.dart';
 import 'package:sophie/widgets/note_card.dart';
 
@@ -135,7 +136,7 @@ class _NotesScreenState extends State<NotesScreen> {
               message: 'Showing cached data — could not reach server',
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4),
-                child: Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                child: Icon(Icons.cloud_off, color: Colors.orange),
               ),
             ),
           IconButton(

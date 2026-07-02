@@ -1,7 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:sophie/backend.dart';
+import 'package:sophie/models/dashboard_data.dart';
+import 'package:sophie/models/task.dart';
+import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/add_task_screen.dart';
+import 'package:sophie/screens/snooze_picker_screen.dart';
+import 'package:sophie/services/alert_notifications.dart';
+import 'package:sophie/services/storage.dart';
 import 'package:sophie/widgets/task_card.dart';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -9,7 +15,7 @@ class TasksScreen extends StatefulWidget {
   final DashboardData data;
   final BackendClient client;
   final VoidCallback onLoggedOut;
-  final Future<void> Function() onRefresh;
+  final VoidCallback onRefresh;
   final bool usingCache;
 
   const TasksScreen({
@@ -29,6 +35,45 @@ class _TasksScreenState extends State<TasksScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
+  bool _hasPendingSnooze = false;
+  StreamSubscription<void>? _snoozeQueueSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasPendingSnooze = Storage.getSnoozePending().isNotEmpty;
+    _snoozeQueueSub = AlertNotifications.snoozeQueueChanges.listen((_) {
+      if (mounted) {
+        setState(
+          () => _hasPendingSnooze = Storage.getSnoozePending().isNotEmpty,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _snoozeQueueSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _openPendingSnooze() async {
+    final item = await Storage.popLastSnoozePending();
+    if (item == null) return;
+    if (mounted) {
+      setState(() => _hasPendingSnooze = Storage.getSnoozePending().isNotEmpty);
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SnoozePickerScreen(
+          alarmId: item['alarmId'] as int,
+          taskId: item['taskId'] as String,
+          body: item['body'] as String?,
+        ),
+      ),
+    );
+  }
 
   Set<DateTime> get _daysWithTasks => widget.data.tasks
       .where((t) => t.dueAt != null)
@@ -38,11 +83,7 @@ class _TasksScreenState extends State<TasksScreen> {
   List<Task> get _filteredTasks {
     if (_selectedDay == null) return widget.data.tasks;
     return widget.data.tasks
-        .where(
-          (t) =>
-              t.dueAt != null &&
-              isSameDay(t.dueAt!, _selectedDay!),
-        )
+        .where((t) => t.dueAt != null && isSameDay(t.dueAt!, _selectedDay!))
         .toList();
   }
 
@@ -73,7 +114,8 @@ class _TasksScreenState extends State<TasksScreen> {
                     _selectedDay != null && isSameDay(day, _selectedDay!),
                 onDaySelected: (selectedDay, focusedDay) {
                   setState(() {
-                    _selectedDay = isSameDay(selectedDay, _selectedDay ?? DateTime(0))
+                    _selectedDay =
+                        isSameDay(selectedDay, _selectedDay ?? DateTime(0))
                         ? null
                         : selectedDay;
                     _focusedDay = focusedDay;
@@ -84,8 +126,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   setState(() => _focusedDay = focusedDay);
                 },
                 eventLoader: (day) {
-                  final normalized =
-                      DateTime(day.year, day.month, day.day);
+                  final normalized = DateTime(day.year, day.month, day.day);
                   return daysWithTasks.contains(normalized) ? [true] : [];
                 },
                 calendarStyle: CalendarStyle(
@@ -124,17 +165,21 @@ class _TasksScreenState extends State<TasksScreen> {
           onPressed: () => _scaffoldKey.currentState!.openDrawer(),
         ),
         title: _selectedDay != null
-            ? Text(
-                'Tasks  •  ${DateFormat('MMM d').format(_selectedDay!)}',
-              )
+            ? Text('Tasks  •  ${DateFormat('MMM d').format(_selectedDay!)}')
             : const Text('Sophie Tasks'),
         actions: [
+          if (_hasPendingSnooze)
+            IconButton(
+              icon: const Icon(Icons.snooze),
+              tooltip: 'Pending snooze',
+              onPressed: _openPendingSnooze,
+            ),
           if (widget.usingCache)
             Tooltip(
               message: 'Showing cached data — could not reach server',
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4),
-                child: Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                child: Icon(Icons.cloud_off, color: Colors.orange),
               ),
             ),
           IconButton(
@@ -181,7 +226,9 @@ class _TasksScreenState extends State<TasksScreen> {
         child: const Icon(Icons.add),
       ),
       body: RefreshIndicator(
-        onRefresh: widget.onRefresh,
+        onRefresh: () async {
+          widget.onRefresh();
+        },
         child: filteredTasks.isEmpty
             ? ListView(
                 physics: const AlwaysScrollableScrollPhysics(),

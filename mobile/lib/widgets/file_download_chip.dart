@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:sophie/backend.dart';
+import 'package:sophie/models/note_file.dart';
+import 'package:sophie/services/backend.dart';
 
 class FileDownloadChip extends StatefulWidget {
   final NoteFile file;
@@ -72,7 +73,7 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
     );
     try {
       final path = '/storage/emulated/0/Download/${widget.file.fileName}';
-      await widget.client.downloadFileTo(widget.file.id, path);
+      await widget.client.noteFile.downloadFileTo(widget.file.id, path);
       // Notify MediaStore so the file appears in file explorers immediately.
       await const MethodChannel(
         'sophie/media_scanner',
