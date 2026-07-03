@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:rrule_generator/rrule_generator.dart';
 import 'package:sophie/models/app_user.dart';
+import 'package:sophie/models/pending_task_edit.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/models/task_alert.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/services/alert_notifications.dart';
-import 'package:sophie/widgets/task_settings_dialog.dart';
+import 'package:sophie/services/storage.dart';
+import 'package:sophie/utils/time_utils.dart';
+import 'package:sophie/dialogs/discard_dialog.dart';
+import 'package:sophie/dialogs/task_settings_dialog.dart';
 
 /// An alert is stored either as an absolute datetime or as a duration before dueAt.
 /// When the user picks a time and _dueAt is set, we compute the difference and
@@ -24,6 +28,7 @@ class AddTaskScreen extends StatefulWidget {
   final BackendClient client;
   // When non-null the screen is in edit mode
   final Task? existingTask;
+  final bool offlineMode;
 
   const AddTaskScreen({
     super.key,
@@ -31,6 +36,7 @@ class AddTaskScreen extends StatefulWidget {
     required this.currentUserId,
     required this.client,
     this.existingTask,
+    this.offlineMode = false,
   });
 
   @override
@@ -174,33 +180,62 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    try {
-      String taskId;
-      if (_isEditing) {
-        taskId = widget.existingTask!.id;
-        await widget.client.task.updateTask(
-          taskId: taskId,
-          text: _textController.text.trim(),
-          rrule: _rrule.isNotEmpty ? _rrule : null,
-          dueAt: _dueAt,
-          color: _color,
-          collaboratorIds: _collaborators.map((u) => u.id).toList(),
-          alerts: _alerts
-              .map((a) => (alertAt: a.alertAt, timeBefore: a.timeBefore))
-              .toList(),
+
+    // Offline path: queue the create/edit and pop immediately.
+    if (widget.offlineMode) {
+      try {
+        final taskId = _isEditing
+            ? widget.existingTask!.id
+            : 'local_${DateTime.now().millisecondsSinceEpoch}';
+        await Storage.addPendingTaskEdit(
+          PendingTaskEdit(
+            taskId: taskId,
+            isNew: !_isEditing,
+            text: _textController.text.trim(),
+            rrule: _rrule.isNotEmpty ? _rrule : null,
+            dueAt: _dueAt?.toUtc().toIso8601String(),
+            color: _color,
+            collaboratorIds: _collaborators.map((u) => u.id).toList(),
+            alerts: _alerts.map((a) {
+              if (a.alertAt != null) {
+                return {
+                  'type': 'absolute',
+                  'alertAt': a.alertAt!.toUtc().toIso8601String(),
+                };
+              }
+              return {
+                'type': 'relative',
+                'timeBefore': TimeUtils.durationToTime(a.timeBefore!),
+              };
+            }).toList(),
+          ),
         );
-      } else {
-        taskId = await widget.client.task.createTask(
-          text: _textController.text.trim(),
-          rrule: _rrule.isNotEmpty ? _rrule : null,
-          dueAt: _dueAt,
-          color: _color,
-          collaboratorIds: _collaborators.map((u) => u.id).toList(),
-          alerts: _alerts
-              .map((a) => (alertAt: a.alertAt, timeBefore: a.timeBefore))
-              .toList(),
-        );
+        if (mounted) Navigator.of(context).pop(true);
+      } catch (_) {
+        if (mounted) {
+          setState(() => _saving = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to save offline. Please try again.'),
+            ),
+          );
+        }
       }
+      return;
+    }
+
+    try {
+      final taskId = await widget.client.task.saveTask(
+        _isEditing ? widget.existingTask!.id : null,
+        _textController.text.trim(),
+        rrule: _rrule.isNotEmpty ? _rrule : null,
+        dueAt: _dueAt,
+        color: _color,
+        collaboratorIds: _collaborators.map((u) => u.id).toList(),
+        alerts: _alerts
+            .map((a) => (alertAt: a.alertAt, timeBefore: a.timeBefore))
+            .toList(),
+      );
       await AlertNotifications.scheduleForTask(_buildSchedulingTask(taskId));
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -268,23 +303,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           Navigator.of(context).pop();
           return;
         }
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Discard changes?'),
-            content: const Text('Your changes will be lost.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Keep editing'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('Discard'),
-              ),
-            ],
-          ),
-        );
+        final confirmed = await showDiscardDialog(context);
         if (confirmed == true && context.mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
@@ -292,6 +311,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           forceMaterialTransparency: true,
           title: Text(_isEditing ? 'Edit Task' : 'New Task'),
           actions: [
+            if (widget.offlineMode)
+              const Tooltip(
+                message: 'Offline — changes will sync when connected',
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4),
+                  child: Icon(Icons.cloud_off, color: Colors.orange),
+                ),
+              ),
             if (_isEditing)
               IconButton(
                 icon: _deleting
@@ -335,7 +362,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           );
                           if (context.mounted) Navigator.of(context).pop(true);
                         } catch (e) {
-                          if (mounted) {
+                          if (context.mounted) {
                             setState(() => _deleting = false);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(

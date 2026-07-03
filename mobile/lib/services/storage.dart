@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sophie/models/dashboard_data.dart';
 import 'package:sophie/models/pending_note_edit.dart';
-import 'package:sophie/services/offline_queue.dart';
+import 'package:sophie/models/pending_task_edit.dart';
 
 class Storage {
   static const String _authTokenKey = 'auth_token';
@@ -12,6 +12,7 @@ class Storage {
   static const String _alertCountsKey = 'alert_notif_counts';
   static const String _snoozePendingKey = 'snooze_pending';
   static const String _offlineNoteEditsKey = 'offline_note_edits';
+  static const String _offlineTaskEditsKey = 'offline_task_edits';
 
   static late SharedPreferences _prefs;
 
@@ -93,6 +94,12 @@ class Storage {
     }
   }
 
+  static Future<void> saveSnoozePendingList(
+    List<Map<String, dynamic>> list,
+  ) async {
+    await _prefs.setString(_snoozePendingKey, jsonEncode(list));
+  }
+
   static Future<void> addSnoozePending(
     int alarmId,
     String taskId,
@@ -100,20 +107,20 @@ class Storage {
   ) async {
     final list = getSnoozePending();
     list.add({'alarmId': alarmId, 'taskId': taskId, 'body': body});
-    await _prefs.setString(_snoozePendingKey, jsonEncode(list));
+    await saveSnoozePendingList(list);
   }
 
   static Future<void> removeSnoozePending(int alarmId) async {
     final list = getSnoozePending()
       ..removeWhere((e) => e['alarmId'] == alarmId);
-    await _prefs.setString(_snoozePendingKey, jsonEncode(list));
+    await saveSnoozePendingList(list);
   }
 
   static Future<Map<String, dynamic>?> popLastSnoozePending() async {
     final list = getSnoozePending();
     if (list.isEmpty) return null;
     final item = list.removeLast();
-    await _prefs.setString(_snoozePendingKey, jsonEncode(list));
+    await saveSnoozePendingList(list);
     return item;
   }
 
@@ -153,5 +160,43 @@ class Storage {
     final list = await getPendingNoteEdits();
     list.removeWhere((e) => e.noteId == noteId);
     await savePendingNoteEdits(list);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Offline task edits queue
+  // ---------------------------------------------------------------------------
+
+  static Future<List<PendingTaskEdit>> getPendingTaskEdits() async {
+    final raw = _prefs.getString(_offlineTaskEditsKey);
+    if (raw == null) return [];
+    try {
+      return (jsonDecode(raw) as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .map(PendingTaskEdit.fromJson)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> _savePendingTaskEdits(List<PendingTaskEdit> edits) async {
+    await _prefs.setString(
+      _offlineTaskEditsKey,
+      jsonEncode(edits.map((e) => e.toJson()).toList()),
+    );
+  }
+
+  /// Enqueues a task edit, replacing any existing pending edit for the same task.
+  static Future<void> addPendingTaskEdit(PendingTaskEdit edit) async {
+    final list = await getPendingTaskEdits();
+    list.removeWhere((e) => e.taskId == edit.taskId);
+    list.add(edit);
+    await _savePendingTaskEdits(list);
+  }
+
+  static Future<void> removePendingTaskEdit(String taskId) async {
+    final list = await getPendingTaskEdits();
+    list.removeWhere((e) => e.taskId == taskId);
+    await _savePendingTaskEdits(list);
   }
 }

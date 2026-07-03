@@ -14,6 +14,7 @@ class TaskCard extends StatefulWidget {
   final VoidCallback onChanged;
   final List<AppUser> allUsers;
   final String currentUserId;
+  final bool offlineMode;
 
   const TaskCard({
     super.key,
@@ -22,6 +23,7 @@ class TaskCard extends StatefulWidget {
     required this.onChanged,
     required this.allUsers,
     required this.currentUserId,
+    this.offlineMode = false,
   });
 
   @override
@@ -82,6 +84,7 @@ class _TaskCardState extends State<TaskCard> {
           currentUserId: widget.currentUserId,
           client: widget.client,
           existingTask: widget.task,
+          offlineMode: widget.offlineMode,
         ),
       ),
     );

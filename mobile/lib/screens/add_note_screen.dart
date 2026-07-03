@@ -11,9 +11,11 @@ import 'package:sophie/screens/add_collaborator_screen.dart';
 import 'package:sophie/services/markdown_text_controller.dart';
 import 'package:sophie/services/storage.dart';
 import 'package:sophie/utils/note_colors.dart';
+import 'package:sophie/dialogs/delete_file_dialog.dart';
+import 'package:sophie/dialogs/discard_dialog.dart';
 import 'package:sophie/widgets/note_history_sheet.dart';
-import 'package:sophie/widgets/note_settings_dialog.dart';
-import 'package:sophie/widgets/type_to_confirm_dialog.dart';
+import 'package:sophie/dialogs/note_settings_dialog.dart';
+import 'package:sophie/dialogs/type_to_confirm_dialog.dart';
 
 class AddNoteScreen extends StatefulWidget {
   final BackendClient client;
@@ -69,27 +71,12 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   @override
   void initState() {
     super.initState();
-    if (_isEditing) WidgetsBinding.instance.addObserver(this);
-    _textController = MarkdownTextController(
-      text: widget.existingNote?.text ?? '',
-    );
-    // Collapse any lingering selection to the end of the text after the first
-    // frame. autofocus + pre-filled text can leave the IME in a selection mode
-    // where one handle is pinned, making taps extend the selection instead of
-    // repositioning the cursor.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _textController.selection = TextSelection.collapsed(
-          offset: _textController.text.length,
-        );
-      }
-    });
+
     _fixedPosition = widget.existingNote?.position;
     _color = widget.existingNote?.color;
     _dontFold = widget.existingNote?.dontFold ?? false;
     _todoList = widget.existingNote?.todoList ?? false;
     _existingFiles = List.of(widget.existingNote?.files ?? []);
-    if (_isEditing && !widget.offlineMode) _startLockHeartbeat();
     // Pre-populate collaborators from the existing note, matching against users
     _collaborators =
         widget.existingNote?.collaborators
@@ -101,6 +88,15 @@ class _AddNoteScreenState extends State<AddNoteScreen>
             .whereType<(AppUser, String)>()
             .toList() ??
         [];
+    _textController = MarkdownTextController(
+      text: widget.existingNote?.text ?? '',
+    );
+
+    if (_isEditing) WidgetsBinding.instance.addObserver(this);
+
+    if (_isEditing && !widget.offlineMode) {
+      _startLockHeartbeat();
+    }
   }
 
   @override
@@ -112,25 +108,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   }
 
   Future<void> _deleteExistingFile(NoteFile file) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete file'),
-        content: Text(
-          'Are you sure you want to delete "${file.fileName}"? This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
+    final confirmed = await showDeleteFileDialog(context, file.fileName);
     if (confirmed != true || !mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
@@ -291,7 +269,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   }
 
   Future<void> _releaseEditLock() async {
-    if (!_isEditing) return;
+    if (!_isEditing || widget.offlineMode) return;
     setState(() => _releasingLock = true);
     try {
       await widget.client.note.releaseNoteLock(widget.existingNote!.id);
@@ -310,9 +288,13 @@ class _AddNoteScreenState extends State<AddNoteScreen>
       _errorMessage = null;
     });
 
-    // Offline path: queue the edit/creation locally and pop immediately.
-    if (widget.offlineMode || (_isEditing && _lockError)) {
-      try {
+    final collabs = _collaborators
+        .map((c) => (userId: c.$1.id, right: c.$2))
+        .toList();
+
+    try {
+      // Offline path: queue the edit/creation locally and pop immediately.
+      if (widget.offlineMode || (_isEditing && _lockError)) {
         final noteId = _isEditing
             ? widget.existingNote!.id
             : 'local_${DateTime.now().millisecondsSinceEpoch}';
@@ -324,53 +306,37 @@ class _AddNoteScreenState extends State<AddNoteScreen>
             color: _color,
             dontFold: _dontFold,
             todoList: _todoList,
-            collaborators: _collaborators
-                .map((c) => (userId: c.$1.id, right: c.$2))
-                .toList(),
+            collaborators: collabs,
             baseUpdatedAt: _isEditing
                 ? widget.existingNote!.updatedAt.toUtc().toIso8601String()
                 : null,
             localSavedAt: DateTime.now().toUtc().toIso8601String(),
           ),
         );
-        // Pop with the saved text so note_card can update in-memory immediately.
-        // For new notes pop true (same as a successful online create).
-        if (mounted) {
-          Navigator.of(
-            context,
-          ).pop(_isEditing ? _textController.text.trim() : true);
-        }
-      } catch (_) {
-        if (mounted) {
-          setState(() {
-            _saving = false;
-            _errorMessage = 'Failed to save offline. Please try again.';
-          });
-        }
+      } else {
+        final fileArgs = _pickedFiles
+            .map((f) => (path: f.path!, name: f.name))
+            .toList();
+
+        await widget.client.note.saveNote(
+          _isEditing ? widget.existingNote!.id : null,
+          _textController.text.trim(),
+          collaborators: collabs,
+          fixedPosition: _fixedPosition,
+          color: _color,
+          dontFold: _dontFold,
+          todoList: _todoList,
+          files: fileArgs,
+        );
       }
-      return;
-    }
 
-    final collabs = _collaborators
-        .map((c) => (userId: c.$1.id, right: c.$2))
-        .toList();
-
-    final fileArgs = _pickedFiles
-        .map((f) => (path: f.path!, name: f.name))
-        .toList();
-
-    try {
-      await widget.client.note.saveNote(
-        _isEditing ? widget.existingNote!.id : null,
-        _textController.text.trim(),
-        collaborators: collabs,
-        fixedPosition: _fixedPosition,
-        color: _color,
-        dontFold: _dontFold,
-        todoList: _todoList,
-        files: fileArgs,
-      );
-      if (mounted) Navigator.of(context).pop(true);
+      // Pop with the saved text so note_card can update in-memory immediately.
+      // For new notes pop true (same as a successful online create).
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pop(_isEditing ? _textController.text.trim() : true);
+      }
     } on UnauthorizedException {
       // onUnauthorized callback already handles logout
     } catch (_) {
@@ -386,28 +352,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        if (!_hasChanges) {
-          await _releaseEditLock();
-          if (context.mounted) Navigator.of(context).pop();
-          return;
-        }
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Discard changes?'),
-            content: const Text('Your changes will be lost.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Keep editing'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('Discard'),
-              ),
-            ],
-          ),
-        );
+        final confirmed = _hasChanges ? await showDiscardDialog(context) : true;
         if (confirmed == true && context.mounted) {
           await _releaseEditLock();
           if (context.mounted) Navigator.of(context).pop();
@@ -525,7 +470,6 @@ class _AddNoteScreenState extends State<AddNoteScreen>
                     expands: true,
                     maxLines: null,
                     textAlignVertical: TextAlignVertical.top,
-                    autofocus: true,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Note cannot be empty.';

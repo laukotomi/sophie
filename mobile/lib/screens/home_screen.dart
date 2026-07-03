@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:sophie/models/dashboard_data.dart';
 import 'package:sophie/models/pending_note_edit.dart';
+import 'package:sophie/models/pending_task_edit.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/notes_screen.dart';
@@ -83,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<DashboardData> _loadData() async {
     final hadConflict = await _syncPendingEdits();
+    await _syncPendingTaskEdits();
     if (hadConflict) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -172,6 +174,54 @@ class _HomeScreenState extends State<HomeScreen> {
       _usingCache = false;
       _dataFuture = _loadData();
     });
+  }
+
+  /// Drains the offline task queue, syncing each pending create/edit to the server.
+  Future<void> _syncPendingTaskEdits() async {
+    List<PendingTaskEdit> pending;
+    try {
+      pending = await Storage.getPendingTaskEdits();
+    } catch (_) {
+      return;
+    }
+    if (pending.isEmpty) return;
+
+    for (final edit in pending) {
+      try {
+        final alerts = edit.alerts.map((a) {
+          if (a['type'] == 'absolute') {
+            return (
+              alertAt: DateTime.parse(a['alertAt'] as String),
+              timeBefore: null as Duration?,
+            );
+          }
+          final parts = (a['timeBefore'] as String).split(':');
+          final h = int.tryParse(parts[0]) ?? 0;
+          final m = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+          return (
+            alertAt: null as DateTime?,
+            timeBefore: Duration(hours: h, minutes: m),
+          );
+        }).toList();
+
+        final dueAt = edit.dueAt != null ? DateTime.parse(edit.dueAt!) : null;
+
+        await widget.client.task.saveTask(
+          edit.isNew ? null : edit.taskId,
+          edit.text,
+          rrule: edit.rrule,
+          dueAt: dueAt,
+          color: edit.color,
+          collaboratorIds: edit.collaboratorIds,
+          alerts: alerts,
+        );
+        await Storage.removePendingTaskEdit(edit.taskId);
+      } on UnauthorizedException {
+        await Storage.removePendingTaskEdit(edit.taskId);
+      } catch (_) {
+        // Network error — leave for next attempt.
+      }
+    }
   }
 
   @override

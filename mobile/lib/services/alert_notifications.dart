@@ -33,10 +33,6 @@ class AlertNotifications {
   static const _doneActionKey = 'MARK_DONE';
   static const _snoozeActionKey = 'SNOOZE';
 
-  // ---------------------------------------------------------------------------
-  // Public API
-  // ---------------------------------------------------------------------------
-
   /// Initialises the alarm package.
   /// Safe to call from [main] before [runApp].
   static Future<void> init() async {
@@ -221,15 +217,14 @@ class AlertNotifications {
     final taskId = action.payload?['taskId'];
     if (alarmId == null || taskId == null) return;
 
+    await cancelByAlarmId(alarmId);
     if (action.buttonKeyPressed == _stopActionKey) {
-      await cancelByAlarmId(alarmId);
       return;
     }
 
     await Storage.init();
 
     if (action.buttonKeyPressed == _snoozeActionKey) {
-      await cancelByAlarmId(alarmId);
       await Storage.addSnoozePending(alarmId, taskId, action.body);
       _snoozeQueueController.add(null);
       await navigatorKey.currentState?.push<void>(
@@ -245,7 +240,6 @@ class AlertNotifications {
     }
 
     if (action.buttonKeyPressed == _doneActionKey) {
-      await cancelByAlarmId(alarmId);
       await _markTaskDone(taskId);
     }
   }

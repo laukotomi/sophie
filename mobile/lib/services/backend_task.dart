@@ -1,6 +1,8 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
+import 'package:sophie/utils/time_utils.dart';
+
 class BackendTask {
   final Duration timeout;
   final String baseUrl;
@@ -13,55 +15,6 @@ class BackendTask {
     required this.checkUnauthorized,
     required this.timeout,
   });
-
-  Future<String> createTask({
-    required String text,
-    String? rrule,
-    DateTime? dueAt,
-    String? color,
-    List<String> collaboratorIds = const [],
-    List<({DateTime? alertAt, Duration? timeBefore})> alerts = const [],
-  }) async {
-    String pad(int n) => n.toString().padLeft(2, '0');
-    String durationToTime(Duration d) =>
-        '${pad(d.inHours)}:${pad(d.inMinutes.remainder(60))}:00';
-
-    final response = await http
-        .post(
-          Uri.parse('$baseUrl/api/tasks'),
-          headers: getHeaders(true),
-          body: jsonEncode({
-            'text': text,
-            if (rrule != null && rrule.isNotEmpty) 'rrule': rrule,
-            if (dueAt != null) 'dueAt': dueAt.toIso8601String(),
-            'color': color,
-            if (collaboratorIds.isNotEmpty) 'collaboratorIds': collaboratorIds,
-            if (alerts.isNotEmpty)
-              'alerts': alerts
-                  .map(
-                    (a) => a.alertAt != null
-                        ? {
-                            'type': 'absolute',
-                            'alertAt': a.alertAt!.toUtc().toIso8601String(),
-                          }
-                        : {
-                            'type': 'relative',
-                            'timeBefore': durationToTime(a.timeBefore!),
-                          },
-                  )
-                  .toList(),
-          }),
-        )
-        .timeout(timeout);
-
-    checkUnauthorized(response.statusCode);
-    if (response.statusCode != 201) {
-      throw Exception('Failed to create task: ${response.statusCode}');
-    }
-
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    return json['id'] as String;
-  }
 
   Future<({String nextTaskId, DateTime nextDueAt})?> setTaskDone({
     required String taskId,
@@ -104,50 +57,55 @@ class BackendTask {
     }
   }
 
-  Future<void> updateTask({
-    required String taskId,
-    required String text,
+  /// Creates a new task when [taskId] is null, or updates an existing one.
+  /// Returns the task ID (server-assigned for creates, same value for updates).
+  Future<String> saveTask(
+    String? taskId,
+    String text, {
     String? rrule,
     DateTime? dueAt,
     String? color,
     List<String> collaboratorIds = const [],
     List<({DateTime? alertAt, Duration? timeBefore})> alerts = const [],
   }) async {
-    String pad(int n) => n.toString().padLeft(2, '0');
-    String durationToTime(Duration d) =>
-        '${pad(d.inHours)}:${pad(d.inMinutes.remainder(60))}:00';
+    final body = jsonEncode({
+      'taskId': ?taskId,
+      'text': text,
+      if (rrule != null && rrule.isNotEmpty) 'rrule': rrule,
+      if (dueAt != null) 'dueAt': dueAt.toIso8601String(),
+      'color': color,
+      if (collaboratorIds.isNotEmpty) 'collaboratorIds': collaboratorIds,
+      if (alerts.isNotEmpty)
+        'alerts': alerts
+            .map(
+              (a) => a.alertAt != null
+                  ? {
+                      'type': 'absolute',
+                      'alertAt': a.alertAt!.toUtc().toIso8601String(),
+                    }
+                  : {
+                      'type': 'relative',
+                      'timeBefore': TimeUtils.durationToTime(a.timeBefore!),
+                    },
+            )
+            .toList(),
+    });
 
-    final response = await http
-        .put(
-          Uri.parse('$baseUrl/api/tasks'),
-          headers: getHeaders(true),
-          body: jsonEncode({
-            'taskId': taskId,
-            'text': text,
-            if (rrule != null && rrule.isNotEmpty) 'rrule': rrule,
-            if (dueAt != null) 'dueAt': dueAt.toIso8601String(),
-            'color': color,
-            if (collaboratorIds.isNotEmpty) 'collaboratorIds': collaboratorIds,
-            'alerts': alerts
-                .map(
-                  (a) => a.alertAt != null
-                      ? {
-                          'type': 'absolute',
-                          'alertAt': a.alertAt!.toUtc().toIso8601String(),
-                        }
-                      : {
-                          'type': 'relative',
-                          'timeBefore': durationToTime(a.timeBefore!),
-                        },
-                )
-                .toList(),
-          }),
-        )
-        .timeout(timeout);
+    final uri = Uri.parse('$baseUrl/api/tasks');
+    final headers = getHeaders(true);
+    final response =
+        await (taskId != null
+                ? http.put(uri, headers: headers, body: body)
+                : http.post(uri, headers: headers, body: body))
+            .timeout(timeout);
 
     checkUnauthorized(response.statusCode);
-    if (response.statusCode != 204) {
-      throw Exception('Failed to update task: ${response.statusCode}');
+    final expectedStatus = taskId != null ? 204 : 201;
+    if (response.statusCode != expectedStatus) {
+      throw Exception('Failed to save task: ${response.statusCode}');
     }
+    if (taskId != null) return taskId;
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return json['id'] as String;
   }
 }

@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
-import 'package:sophie/backend.dart';
+import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/home_screen.dart';
 import 'package:sophie/screens/login_screen.dart';
 import 'package:sophie/services/alert_notifications.dart';
-import 'package:sophie/storage.dart';
+import 'package:sophie/services/storage.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

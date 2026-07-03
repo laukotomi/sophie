@@ -217,6 +217,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 users: widget.data.users,
                 currentUserId: widget.data.user.id,
                 client: widget.client,
+                offlineMode: widget.usingCache,
               ),
             ),
           );
@@ -259,6 +260,7 @@ class _TasksScreenState extends State<TasksScreen> {
                       onChanged: widget.onRefresh,
                       allUsers: widget.data.users,
                       currentUserId: widget.data.user.id,
+                      offlineMode: widget.usingCache,
                     ),
                   );
                 },

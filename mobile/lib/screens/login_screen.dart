@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:sophie/backend.dart';
-import 'package:sophie/storage.dart';
+import 'package:sophie/services/backend.dart';
+import 'package:sophie/services/storage.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? initialServerUrl;
