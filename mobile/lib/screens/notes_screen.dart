@@ -1,26 +1,30 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:sophie/models/dashboard_data.dart';
+import 'package:sophie/events/app_logout_event.dart';
+import 'package:sophie/events/app_sync_event.dart';
+import 'package:sophie/events/note_deleted_event.dart';
+import 'package:sophie/events/note_file_deleted_event.dart';
+import 'package:sophie/events/note_saved_event.dart';
+import 'package:sophie/main.dart';
+import 'package:sophie/models/note.dart';
+import 'package:sophie/models/note_collaborator.dart';
+import 'package:sophie/models/note_file.dart';
+import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend.dart';
+import 'package:sophie/services/backend_note.dart';
+import 'package:sophie/services/backend_note_file.dart';
+import 'package:sophie/services/note_events.dart';
 import 'package:sophie/screens/add_note_screen.dart';
+import 'package:sophie/services/storage.dart';
+import 'package:sophie/services/user_service.dart';
 import 'package:sophie/widgets/note_card.dart';
 
 class NotesScreen extends StatefulWidget {
-  final BackendClient client;
-  final VoidCallback onLoggedOut;
-  final DashboardData data;
+  final List<Note> notes;
   final bool usingCache;
-  final VoidCallback onRefresh;
-  final bool isActive;
 
-  const NotesScreen({
-    super.key,
-    required this.client,
-    required this.onLoggedOut,
-    required this.data,
-    required this.usingCache,
-    required this.onRefresh,
-    this.isActive = true,
-  });
+  const NotesScreen({super.key, required this.notes, required this.usingCache});
 
   @override
   State<NotesScreen> createState() => _NotesScreenState();
@@ -29,6 +33,8 @@ class NotesScreen extends StatefulWidget {
 class _NotesScreenState extends State<NotesScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
+  late final StreamSubscription<NoteEvent>? _noteEventSub;
+  late final AppEventSubscription? _appEventSub;
 
   String? _selectedTag;
 
@@ -47,9 +53,155 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _noteEventSub = NoteEventBus.instance.stream.listen(_handleNoteEvent);
+    _appEventSub = AppEventBus.instance.listen((event) async {
+      if (event is AppSyncEvent) {
+        await _syncNoteChanges();
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _scrollController.dispose();
+    _noteEventSub?.cancel();
+    _appEventSub?.cancel();
     super.dispose();
+  }
+
+  Future _syncNoteChanges() async {
+    try {
+      final events = await Storage.getOfflineNoteEvents();
+      if (events.isEmpty) return;
+
+      final noteClient = getIt<BackendNote>();
+
+      for (final event in events) {
+        try {
+          if (event is NoteDeletedEvent) {
+            await noteClient.deleteNote(event.noteId);
+          } else if (event is NoteSavedEvent) {
+            bool hadConflict = false;
+            if (!event.isNew) {
+              final result = await noteClient.acquireNoteLock(event.noteId);
+              hadConflict = event.createdAt.isBefore(result.updatedAt);
+            }
+            await noteClient.saveNote(event);
+            if (!event.isNew) {
+              await noteClient.releaseNoteLock(event.noteId);
+            }
+
+            if (hadConflict) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'An offline edit conflicted with a newer version. '
+                        'The most recent was kept. Check note history if you need to recover yours.',
+                      ),
+                      duration: Duration(seconds: 10),
+                    ),
+                  );
+                }
+              });
+            }
+          } else if (event is NoteFileDeletedEvent) {
+            await getIt<BackendNoteFile>().deleteFile(event);
+          }
+
+          Storage.removeNoteEvent(event.eventId);
+        } on UnauthorizedException {
+          Storage.removeNoteEvent(event.eventId);
+        } on NotFoundException {
+          Storage.removeNoteEvent(event.eventId);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error syncing note changes: $e')),
+        );
+      }
+    }
+  }
+
+  void _handleNoteEvent(NoteEvent event) {
+    if (!widget.usingCache) return;
+
+    Storage.addNoteEvent(event);
+
+    if (event is NoteSavedEvent) {
+      final users = getIt<UserService>().users;
+      final collabs = event.collaborators.map((c) {
+        final user = users.firstWhere((u) => u.id == c.userId);
+        return NoteCollaborator(
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          right: c.right,
+        );
+      }).toList();
+
+      final newFiles = event.files
+          .map((f) => NoteFile(fileName: f.name))
+          .toList();
+
+      if (!event.isNew) {
+        final note = widget.notes.firstWhere((n) => n.id == event.noteId);
+        setState(() {
+          note
+            ..updatedAt = DateTime.now()
+            ..position = event.fixedPosition
+            ..text = event.text
+            ..color = event.color
+            ..dontFold = event.dontFold
+            ..todoList = event.todoList
+            ..collaborators = collabs
+            ..files.addAll(newFiles);
+        });
+      } else {
+        final ownerId = getIt<UserService>().currentUserId;
+        setState(() {
+          widget.notes.add(
+            Note(
+              collaborators: collabs,
+              createdAt: DateTime.now(),
+              id: 'local_${DateTime.now().millisecondsSinceEpoch}',
+              isOwner: true,
+              ownerId: ownerId,
+              right: 'owner',
+              text: event.text,
+              updatedAt: DateTime.now(),
+              color: event.color,
+              dontFold: event.dontFold,
+              position: event.fixedPosition,
+              todoList: event.todoList,
+              files: newFiles,
+            ),
+          );
+        });
+      }
+
+      setState(() {
+        widget.notes.sort((a, b) {
+          final posA = a.position;
+          final posB = b.position;
+          if (posA != null && posB != null) return posA.compareTo(posB);
+          if (posA != null) return -1;
+          if (posB != null) return 1;
+          return b.updatedAt.compareTo(a.updatedAt);
+        });
+      });
+    } else if (event is NoteDeletedEvent) {
+      widget.notes.removeWhere((n) => n.id == event.noteId);
+    } else if (event is NoteFileDeletedEvent) {
+      for (final note in widget.notes) {
+        note.files.removeWhere((f) => f.id == event.fileId);
+      }
+    }
   }
 
   @override
@@ -59,7 +211,7 @@ class _NotesScreenState extends State<NotesScreen> {
       drawer: Builder(
         builder: (context) {
           final allTags = <String>{};
-          for (final note in widget.data.notes) {
+          for (final note in widget.notes) {
             allTags.addAll(_extractTags(note.text));
           }
           final sorted = allTags.toList()..sort();
@@ -160,7 +312,9 @@ class _NotesScreenState extends State<NotesScreen> {
                   ],
                 ),
               );
-              if (confirmed == true) widget.onLoggedOut();
+              if (confirmed == true) {
+                AppEventBus.instance.emit(AppLogoutEvent());
+              }
             },
           ),
         ],
@@ -168,71 +322,55 @@ class _NotesScreenState extends State<NotesScreen> {
       floatingActionButton: FloatingActionButton(
         heroTag: 'fab_notes',
         onPressed: () async {
-          final created = await Navigator.of(context).push<bool>(
+          await Navigator.of(context).push<bool>(
             MaterialPageRoute(
-              builder: (_) => AddNoteScreen(
-                client: widget.client,
-                users: widget.data.users,
-                currentUserId: widget.data.user.id,
-              ),
+              builder: (_) => AddNoteScreen(offlineMode: widget.usingCache),
             ),
           );
-          if (created == true) widget.onRefresh();
         },
         tooltip: 'Add note',
         child: const Icon(Icons.add),
       ),
       body: Builder(
         builder: (context) {
-          final notes = widget.data.notes;
           final filtered = _selectedTag == null
-              ? notes
-              : notes
+              ? widget.notes
+              : widget.notes
                     .where((n) => _extractTags(n.text).contains(_selectedTag))
                     .toList();
 
-          if (filtered.isEmpty) {
-            return RefreshIndicator(
-              onRefresh: () async => widget.onRefresh(),
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.6,
-                    child: Center(
-                      child: Text(
-                        _selectedTag != null
-                            ? 'No notes tagged #$_selectedTag.'
-                            : 'No notes yet.',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
           return RefreshIndicator(
-            onRefresh: () async => widget.onRefresh(),
-            child: ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              controller: _scrollController,
-              padding: const EdgeInsets.all(12),
-              itemCount: filtered.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final note = filtered[index];
-                return NoteCard(
-                  note: note,
-                  users: widget.data.users,
-                  currentUserId: widget.data.user.id,
-                  client: widget.client,
-                  onEdited: widget.onRefresh,
-                  scrollController: _scrollController,
-                  isActive: widget.isActive,
-                );
-              },
-            ),
+            onRefresh: () async => AppEventBus.instance.emit(AppSyncEvent()),
+            child: filtered.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.6,
+                        child: Center(
+                          child: Text(
+                            _selectedTag != null
+                                ? 'No notes tagged #$_selectedTag.'
+                                : 'No notes yet.',
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(12),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final note = filtered[index];
+                      return NoteCard(
+                        note: note,
+                        scrollController: _scrollController,
+                      );
+                    },
+                  ),
           );
         },
       ),

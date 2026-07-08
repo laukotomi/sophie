@@ -1,5 +1,4 @@
-import 'package:sophie/models/task_alert.dart';
-import 'package:sophie/models/task_collaborator.dart';
+import 'package:sophie/models/alert.dart';
 
 class Task {
   final String id;
@@ -10,8 +9,8 @@ class Task {
   final DateTime? doneAt;
   final DateTime createdAt;
   final bool isOwner;
-  final List<TaskCollaborator> collaborators;
-  final List<TaskAlert> alerts;
+  final List<String> collaborators;
+  final List<Alert> alerts;
 
   const Task({
     required this.id,
@@ -40,10 +39,10 @@ class Task {
     createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
     isOwner: json['isOwner'] as bool,
     collaborators: (json['collaborators'] as List<dynamic>)
-        .map((c) => TaskCollaborator.fromJson(c as Map<String, dynamic>))
+        .map((c) => c as String)
         .toList(),
     alerts: (json['alerts'] as List<dynamic>)
-        .map((a) => TaskAlert.fromJson(a as Map<String, dynamic>))
+        .map((a) => Alert.fromJson(a as Map<String, dynamic>))
         .toList(),
   );
 
@@ -56,7 +55,7 @@ class Task {
     'doneAt': doneAt?.toIso8601String(),
     'createdAt': createdAt.toIso8601String(),
     'isOwner': isOwner,
-    'collaborators': collaborators.map((c) => c.toJson()).toList(),
+    'collaborators': collaborators,
     'alerts': alerts.map((a) => a.toJson()).toList(),
   };
 }

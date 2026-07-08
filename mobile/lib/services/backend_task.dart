@@ -1,4 +1,5 @@
 import 'package:http/http.dart' as http;
+import 'package:sophie/events/task_saved_event.dart';
 import 'dart:convert';
 
 import 'package:sophie/utils/time_utils.dart';
@@ -42,7 +43,7 @@ class BackendTask {
     return null;
   }
 
-  Future<void> deleteTask({required String taskId}) async {
+  Future deleteTask({required String taskId}) async {
     final response = await http
         .delete(
           Uri.parse('$baseUrl/api/tasks'),
@@ -59,24 +60,17 @@ class BackendTask {
 
   /// Creates a new task when [taskId] is null, or updates an existing one.
   /// Returns the task ID (server-assigned for creates, same value for updates).
-  Future<String> saveTask(
-    String? taskId,
-    String text, {
-    String? rrule,
-    DateTime? dueAt,
-    String? color,
-    List<String> collaboratorIds = const [],
-    List<({DateTime? alertAt, Duration? timeBefore})> alerts = const [],
-  }) async {
+  Future<String> saveTask(TaskSavedEvent event) async {
     final body = jsonEncode({
-      'taskId': ?taskId,
-      'text': text,
-      if (rrule != null && rrule.isNotEmpty) 'rrule': rrule,
-      if (dueAt != null) 'dueAt': dueAt.toIso8601String(),
-      'color': color,
-      if (collaboratorIds.isNotEmpty) 'collaboratorIds': collaboratorIds,
-      if (alerts.isNotEmpty)
-        'alerts': alerts
+      'taskId': event.taskId,
+      'text': event.text,
+      if (event.rrule != null && event.rrule!.isNotEmpty) 'rrule': event.rrule,
+      if (event.dueAt != null) 'dueAt': event.dueAt!.toIso8601String(),
+      'color': event.color,
+      if (event.collaboratorIds.isNotEmpty)
+        'collaboratorIds': event.collaboratorIds,
+      if (event.alerts.isNotEmpty)
+        'alerts': event.alerts
             .map(
               (a) => a.alertAt != null
                   ? {
@@ -94,17 +88,17 @@ class BackendTask {
     final uri = Uri.parse('$baseUrl/api/tasks');
     final headers = getHeaders(true);
     final response =
-        await (taskId != null
-                ? http.put(uri, headers: headers, body: body)
-                : http.post(uri, headers: headers, body: body))
+        await (event.isNew
+                ? http.post(uri, headers: headers, body: body)
+                : http.put(uri, headers: headers, body: body))
             .timeout(timeout);
 
     checkUnauthorized(response.statusCode);
-    final expectedStatus = taskId != null ? 204 : 201;
+    final expectedStatus = event.isNew ? 201 : 204;
     if (response.statusCode != expectedStatus) {
       throw Exception('Failed to save task: ${response.statusCode}');
     }
-    if (taskId != null) return taskId;
+    if (!event.isNew) return event.taskId;
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     return json['id'] as String;
   }

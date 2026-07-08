@@ -204,13 +204,8 @@ dashboard.get('/', async (c) => {
             })
             .map((t) => ({
                 ...t,
-                collaborators: (taskCollaboratorsByTaskId.get(t.id) ?? []).flatMap((c) => {
-                    const u = userById.get(c.userId);
-                    if (!u) return [];
-                    return [{ id: c.userId, name: u.name, email: u.email }];
-                }),
+                collaborators: (taskCollaboratorsByTaskId.get(t.id) ?? []).map((c) => c.userId),
                 alerts: (alertsByTaskId.get(t.id) ?? []).map((a) => ({
-                    id: a.id,
                     alertAt: a.alertAt,
                     timeBefore: a.timeBefore,
                 })),

@@ -4,16 +4,16 @@ import 'package:sophie/models/note_file.dart';
 class Note {
   final String id;
   String text;
-  final String? color;
-  final bool dontFold;
-  final bool todoList;
+  String? color;
+  bool dontFold;
+  bool todoList;
   final DateTime createdAt;
-  final DateTime updatedAt;
+  DateTime updatedAt;
   final String right;
   final bool isOwner;
   final String ownerId;
-  final int? position;
-  final List<NoteCollaborator> collaborators;
+  int? position;
+  List<NoteCollaborator> collaborators;
   final List<NoteFile> files;
 
   Note({

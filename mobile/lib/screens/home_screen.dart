@@ -4,26 +4,23 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
+import 'package:sophie/events/app_logout_event.dart';
+import 'package:sophie/events/app_sync_event.dart';
+import 'package:sophie/main.dart';
 import 'package:sophie/models/dashboard_data.dart';
-import 'package:sophie/models/pending_note_edit.dart';
-import 'package:sophie/models/pending_task_edit.dart';
 import 'package:sophie/models/task.dart';
+import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/notes_screen.dart';
 import 'package:sophie/services/alert_notifications.dart';
-import 'package:sophie/services/backend_note.dart';
 import 'package:sophie/screens/tasks_screen.dart';
 import 'package:sophie/services/storage.dart';
+import 'package:sophie/services/user_service.dart';
 
 class HomeScreen extends StatefulWidget {
-  final BackendClient client;
   final VoidCallback onLoggedOut;
 
-  const HomeScreen({
-    super.key,
-    required this.client,
-    required this.onLoggedOut,
-  });
+  const HomeScreen({super.key, required this.onLoggedOut});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -38,11 +35,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _usingCache = false;
   StreamSubscription? _navEventSub;
   StreamSubscription? _refreshSub;
+  AppEventSubscription? _appEventSub;
 
   @override
   void initState() {
     super.initState();
     _dataFuture = _loadData();
+    _appEventSub = AppEventBus.instance.listen(_handleAppEvent);
     _refreshSub = AlertNotifications.refreshRequests.listen((_) => _refresh());
     // Background case: app already running, widget tapped → onNewIntent fires.
     _navEventSub = _navEvents.receiveBroadcastStream().listen((route) {
@@ -58,11 +57,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _navEventSub?.cancel();
+    _appEventSub?.cancel();
     _refreshSub?.cancel();
     super.dispose();
   }
 
-  static Future<void> _pushTasksToWidget(List<Task> tasks) async {
+  static Future _pushTasksToWidget(List<Task> tasks) async {
     final pending = tasks.where((t) => t.doneAt == null).toList();
     final json = jsonEncode(
       pending
@@ -82,26 +82,21 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<DashboardData> _loadData() async {
-    final hadConflict = await _syncPendingEdits();
-    await _syncPendingTaskEdits();
-    if (hadConflict) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'An offline edit conflicted with a newer version. '
-                'The most recent was kept. Check note history if you need to recover yours.',
-              ),
-              duration: Duration(seconds: 10),
-            ),
-          );
-        }
-      });
+  Future _handleAppEvent(AppEvent event) async {
+    switch (event) {
+      case AppLogoutEvent():
+        widget.onLoggedOut();
+        break;
+      case AppSyncEvent():
+        _refresh();
+        break;
     }
+  }
+
+  Future<DashboardData> _loadData() async {
+    DashboardData? data;
     try {
-      final data = await widget.client.getDashboardData();
+      data = await getIt<BackendClient>().getDashboardData();
       await AlertNotifications.rescheduleAll(data.tasks);
       await Storage.saveDashboardData(data);
       if (Platform.isAndroid) {
@@ -111,62 +106,22 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _usingCache = false);
       return data;
     } catch (error) {
-      final cached = Storage.getDashboardData();
-      if (cached != null) {
+      data = Storage.getDashboardData();
+      if (data != null) {
         if (mounted) setState(() => _usingCache = true);
-        return cached;
+        return data;
       }
       rethrow;
-    }
-  }
-
-  /// Drains the offline edit queue, syncing each pending edit to the server.
-  /// Returns true if any edit resulted in a LWW conflict.
-  Future<bool> _syncPendingEdits() async {
-    List<PendingNoteEdit> pending;
-    try {
-      pending = await Storage.getPendingNoteEdits();
-    } catch (_) {
-      return false;
-    }
-    if (pending.isEmpty) return false;
-
-    bool anyConflict = false;
-    for (final edit in pending) {
-      try {
-        if (edit.isNew) {
-          await widget.client.note.saveNote(
-            null,
-            edit.text,
-            collaborators: edit.collaborators,
-            color: edit.color,
-            dontFold: edit.dontFold,
-            todoList: edit.todoList,
-          );
-        } else {
-          final conflicted = await widget.client.note.syncOfflineEdit(
-            noteId: edit.noteId,
-            text: edit.text,
-            collaborators: edit.collaborators,
-            color: edit.color,
-            dontFold: edit.dontFold,
-            todoList: edit.todoList,
-            baseUpdatedAt: edit.baseUpdatedAt!,
-            localSavedAt: edit.localSavedAt,
-          );
-          if (conflicted) anyConflict = true;
+    } finally {
+      if (data != null) {
+        if (getIt.isRegistered(type: UserService)) {
+          getIt.releaseInstance(getIt<UserService>());
         }
-        await Storage.removePendingNoteEdit(edit.noteId);
-      } on UnauthorizedException {
-        await Storage.removePendingNoteEdit(edit.noteId);
-      } on NoteGoneException {
-        // Note deleted or access revoked — discard silently.
-        await Storage.removePendingNoteEdit(edit.noteId);
-      } catch (_) {
-        // Network error or note currently locked — leave for next attempt.
+        getIt.registerSingleton(
+          UserService(currentUserId: data.user.id, users: data.users),
+        );
       }
     }
-    return anyConflict;
   }
 
   void _refresh() {
@@ -174,54 +129,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _usingCache = false;
       _dataFuture = _loadData();
     });
-  }
-
-  /// Drains the offline task queue, syncing each pending create/edit to the server.
-  Future<void> _syncPendingTaskEdits() async {
-    List<PendingTaskEdit> pending;
-    try {
-      pending = await Storage.getPendingTaskEdits();
-    } catch (_) {
-      return;
-    }
-    if (pending.isEmpty) return;
-
-    for (final edit in pending) {
-      try {
-        final alerts = edit.alerts.map((a) {
-          if (a['type'] == 'absolute') {
-            return (
-              alertAt: DateTime.parse(a['alertAt'] as String),
-              timeBefore: null as Duration?,
-            );
-          }
-          final parts = (a['timeBefore'] as String).split(':');
-          final h = int.tryParse(parts[0]) ?? 0;
-          final m = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
-          return (
-            alertAt: null as DateTime?,
-            timeBefore: Duration(hours: h, minutes: m),
-          );
-        }).toList();
-
-        final dueAt = edit.dueAt != null ? DateTime.parse(edit.dueAt!) : null;
-
-        await widget.client.task.saveTask(
-          edit.isNew ? null : edit.taskId,
-          edit.text,
-          rrule: edit.rrule,
-          dueAt: dueAt,
-          color: edit.color,
-          collaboratorIds: edit.collaboratorIds,
-          alerts: alerts,
-        );
-        await Storage.removePendingTaskEdit(edit.taskId);
-      } on UnauthorizedException {
-        await Storage.removePendingTaskEdit(edit.taskId);
-      } catch (_) {
-        // Network error — leave for next attempt.
-      }
-    }
   }
 
   @override
@@ -261,21 +168,8 @@ class _HomeScreenState extends State<HomeScreen> {
           body: IndexedStack(
             index: _selectedIndex,
             children: [
-              NotesScreen(
-                client: widget.client,
-                onLoggedOut: widget.onLoggedOut,
-                data: data,
-                usingCache: _usingCache,
-                onRefresh: _refresh,
-                isActive: _selectedIndex == 0,
-              ),
-              TasksScreen(
-                data: data,
-                client: widget.client,
-                onLoggedOut: widget.onLoggedOut,
-                onRefresh: _refresh,
-                usingCache: _usingCache,
-              ),
+              NotesScreen(notes: data.notes, usingCache: _usingCache),
+              TasksScreen(tasks: data.tasks, usingCache: _usingCache),
             ],
           ),
           bottomNavigationBar: NavigationBar(

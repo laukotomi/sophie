@@ -1,30 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:sophie/models/app_user.dart';
+import 'package:sophie/main.dart';
 import 'package:sophie/models/task.dart';
-import 'package:sophie/models/task_alert.dart';
-import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/add_task_screen.dart';
 import 'package:sophie/services/alert_notifications.dart';
+import 'package:sophie/services/backend_task.dart';
 import 'package:sophie/utils/note_colors.dart';
 import 'package:sophie/widgets/note_chip.dart';
 
 class TaskCard extends StatefulWidget {
   final Task task;
-  final BackendClient client;
-  final VoidCallback onChanged;
-  final List<AppUser> allUsers;
-  final String currentUserId;
   final bool offlineMode;
 
-  const TaskCard({
-    super.key,
-    required this.task,
-    required this.client,
-    required this.onChanged,
-    required this.allUsers,
-    required this.currentUserId,
-    this.offlineMode = false,
-  });
+  const TaskCard({super.key, required this.task, this.offlineMode = false});
 
   @override
   State<TaskCard> createState() => _TaskCardState();
@@ -33,11 +20,11 @@ class TaskCard extends StatefulWidget {
 class _TaskCardState extends State<TaskCard> {
   bool _loading = false;
 
-  Future<void> _toggleDone() async {
+  Future _toggleDone() async {
     setState(() => _loading = true);
     final markingDone = widget.task.doneAt == null;
     try {
-      final next = await widget.client.task.setTaskDone(
+      final next = await getIt<BackendTask>().setTaskDone(
         taskId: widget.task.id,
         done: markingDone,
       );
@@ -47,24 +34,13 @@ class _TaskCardState extends State<TaskCard> {
       if (next != null) {
         // Schedule alerts for the newly spawned recurring task.
         // Only relative (timeBefore) alerts transfer; absolute ones would be past-dated.
-        await AlertNotifications.scheduleForTask(
-          Task(
-            id: next.nextTaskId,
-            text: widget.task.text,
-            dueAt: next.nextDueAt,
-            rrule: widget.task.rrule,
-            color: widget.task.color,
-            isOwner: true,
-            createdAt: DateTime.now(),
-            collaborators: [],
-            alerts: widget.task.alerts
-                .where((a) => a.timeBefore != null)
-                .map((a) => TaskAlert(id: 0, timeBefore: a.timeBefore))
-                .toList(),
-          ),
+        await AlertNotifications.scheduleAlerts(
+          next.nextTaskId,
+          next.nextDueAt,
+          widget.task.alerts,
+          widget.task.text,
         );
       }
-      widget.onChanged();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -76,19 +52,15 @@ class _TaskCardState extends State<TaskCard> {
     }
   }
 
-  Future<void> _openEdit() async {
-    final changed = await Navigator.of(context).push<bool>(
+  Future _openEdit() async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AddTaskScreen(
-          users: widget.allUsers,
-          currentUserId: widget.currentUserId,
-          client: widget.client,
           existingTask: widget.task,
           offlineMode: widget.offlineMode,
         ),
       ),
     );
-    if (changed == true) widget.onChanged();
   }
 
   @override

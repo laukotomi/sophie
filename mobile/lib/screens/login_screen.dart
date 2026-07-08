@@ -42,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {

@@ -1,15 +1,21 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:sophie/events/note_deleted_event.dart';
+import 'package:sophie/events/note_file_deleted_event.dart';
+import 'package:sophie/events/note_saved_event.dart';
+import 'package:sophie/main.dart';
 import 'package:sophie/models/app_user.dart';
 import 'package:sophie/models/note.dart';
 import 'package:sophie/models/note_file.dart';
 import 'package:sophie/models/note_history_entry.dart';
-import 'package:sophie/models/pending_note_edit.dart';
+import 'package:sophie/services/backend_note.dart';
+import 'package:sophie/services/backend_note_file.dart';
+import 'package:sophie/services/note_events.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/add_collaborator_screen.dart';
 import 'package:sophie/services/markdown_text_controller.dart';
-import 'package:sophie/services/storage.dart';
+import 'package:sophie/services/user_service.dart';
 import 'package:sophie/utils/note_colors.dart';
 import 'package:sophie/dialogs/delete_file_dialog.dart';
 import 'package:sophie/dialogs/discard_dialog.dart';
@@ -18,9 +24,6 @@ import 'package:sophie/dialogs/note_settings_dialog.dart';
 import 'package:sophie/dialogs/type_to_confirm_dialog.dart';
 
 class AddNoteScreen extends StatefulWidget {
-  final BackendClient client;
-  final List<AppUser> users;
-  final String currentUserId;
   // When non-null the screen is in edit mode
   final Note? existingNote;
   // True when the note was opened without a server lock (no connectivity).
@@ -28,11 +31,8 @@ class AddNoteScreen extends StatefulWidget {
 
   const AddNoteScreen({
     super.key,
-    required this.client,
-    required this.users,
-    required this.currentUserId,
+    required this.offlineMode,
     this.existingNote,
-    this.offlineMode = false,
   });
 
   @override
@@ -77,11 +77,13 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     _dontFold = widget.existingNote?.dontFold ?? false;
     _todoList = widget.existingNote?.todoList ?? false;
     _existingFiles = List.of(widget.existingNote?.files ?? []);
+
     // Pre-populate collaborators from the existing note, matching against users
+    final users = getIt<UserService>().users;
     _collaborators =
         widget.existingNote?.collaborators
             .map((c) {
-              final user = widget.users.where((u) => u.id == c.id).firstOrNull;
+              final user = users.where((u) => u.id == c.id).firstOrNull;
               if (user == null) return null;
               return (user, c.right);
             })
@@ -107,13 +109,20 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     super.dispose();
   }
 
-  Future<void> _deleteExistingFile(NoteFile file) async {
+  Future _deleteExistingFile(NoteFile file) async {
     final confirmed = await showDeleteFileDialog(context, file.fileName);
     if (confirmed != true || !mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await widget.client.noteFile.deleteFile(file.id);
+      if (file.id != null) {
+        final event = NoteFileDeletedEvent(fileId: file.id!);
+        if (widget.offlineMode) {
+          NoteEventBus.instance.emit(event);
+        } else {
+          await getIt<BackendNoteFile>().deleteFile(event);
+        }
+      }
       if (mounted) setState(() => _existingFiles.remove(file));
     } catch (_) {
       messenger.showSnackBar(
@@ -122,7 +131,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     }
   }
 
-  Future<void> _openSettings() async {
+  Future _openSettings() async {
     await showDialog<void>(
       context: context,
       builder: (ctx) => NoteSettingsDialog(
@@ -144,15 +153,14 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     );
   }
 
-  Future<void> _openAddCollaborator() async {
+  Future _openAddCollaborator() async {
+    final users = getIt<UserService>().users;
     final alreadyAdded = _collaborators.map((c) => c.$1.id).toSet();
-    alreadyAdded.add(widget.currentUserId);
+    alreadyAdded.add(getIt<UserService>().currentUserId);
     if (widget.existingNote != null) {
       alreadyAdded.add(widget.existingNote!.ownerId);
     }
-    final available = widget.users
-        .where((u) => !alreadyAdded.contains(u.id))
-        .toList();
+    final available = users.where((u) => !alreadyAdded.contains(u.id)).toList();
 
     if (available.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -172,7 +180,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     }
   }
 
-  Future<void> _openAddFile() async {
+  Future _openAddFile() async {
     final result = await FilePicker.platform.pickFiles(allowMultiple: true);
     if (result == null || result.files.isEmpty) return;
     final newFiles = result.files.where((f) => f.path != null);
@@ -189,7 +197,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   void _startLockHeartbeat() {
     _lockHeartbeat = Timer.periodic(const Duration(seconds: 20), (_) async {
       try {
-        await widget.client.note.refreshNoteLock(widget.existingNote!.id);
+        await getIt<BackendNote>().refreshNoteLock(widget.existingNote!.id);
         if (mounted && _lockError) setState(() => _lockError = false);
       } catch (_) {
         if (mounted && !_lockError) setState(() => _lockError = true);
@@ -209,11 +217,11 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     }
   }
 
-  Future<void> _openHistory() async {
+  Future _openHistory() async {
     setState(() => _loadingHistory = true);
     List<NoteHistoryEntry> history;
     try {
-      history = await widget.client.note.getNoteHistory(
+      history = await getIt<BackendNote>().getNoteHistory(
         widget.existingNote!.id,
       );
     } catch (_) {
@@ -245,7 +253,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     );
   }
 
-  Future<void> _deleteNote() async {
+  Future _deleteNote() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => const TypeToConfirmDialog(
@@ -257,8 +265,12 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     if (confirmed != true || !mounted) return;
     setState(() => _deleting = true);
     try {
-      await widget.client.note.deleteNote(widget.existingNote!.id);
-      if (mounted) Navigator.of(context).pop(true);
+      if (widget.offlineMode) {
+        NoteEventBus.instance.emit(NoteDeletedEvent(widget.existingNote!.id));
+      } else {
+        await getIt<BackendNote>().deleteNote(widget.existingNote!.id);
+      }
+      if (mounted) Navigator.of(context).pop();
     } on UnauthorizedException {
       // handled by onUnauthorized
     } catch (_) {
@@ -268,11 +280,11 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     }
   }
 
-  Future<void> _releaseEditLock() async {
+  Future _releaseEditLock() async {
     if (!_isEditing || widget.offlineMode) return;
     setState(() => _releasingLock = true);
     try {
-      await widget.client.note.releaseNoteLock(widget.existingNote!.id);
+      await getIt<BackendNote>().releaseNoteLock(widget.existingNote!.id);
     } catch (_) {
       // Ignore — lock will expire on its own.
     } finally {
@@ -280,7 +292,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     }
   }
 
-  Future<void> _save() async {
+  Future _save() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -288,54 +300,27 @@ class _AddNoteScreenState extends State<AddNoteScreen>
       _errorMessage = null;
     });
 
-    final collabs = _collaborators
-        .map((c) => (userId: c.$1.id, right: c.$2))
-        .toList();
-
     try {
-      // Offline path: queue the edit/creation locally and pop immediately.
-      if (widget.offlineMode || (_isEditing && _lockError)) {
-        final noteId = _isEditing
-            ? widget.existingNote!.id
-            : 'local_${DateTime.now().millisecondsSinceEpoch}';
-        await Storage.addPendingNoteEdit(
-          PendingNoteEdit(
-            noteId: noteId,
-            isNew: !_isEditing,
-            text: _textController.text.trim(),
-            color: _color,
-            dontFold: _dontFold,
-            todoList: _todoList,
-            collaborators: collabs,
-            baseUpdatedAt: _isEditing
-                ? widget.existingNote!.updatedAt.toUtc().toIso8601String()
-                : null,
-            localSavedAt: DateTime.now().toUtc().toIso8601String(),
-          ),
-        );
+      final event = NoteSavedEvent(
+        collaborators: _collaborators
+            .map((c) => (userId: c.$1.id, right: c.$2))
+            .toList(),
+        color: _color,
+        dontFold: _dontFold,
+        files: _pickedFiles.map((f) => (path: f.path!, name: f.name)).toList(),
+        fixedPosition: _fixedPosition,
+        noteId: _isEditing ? widget.existingNote!.id : null,
+        text: _textController.text.trim(),
+        todoList: _todoList,
+      );
+      if (widget.offlineMode || _lockError) {
+        NoteEventBus.instance.emit(event);
       } else {
-        final fileArgs = _pickedFiles
-            .map((f) => (path: f.path!, name: f.name))
-            .toList();
-
-        await widget.client.note.saveNote(
-          _isEditing ? widget.existingNote!.id : null,
-          _textController.text.trim(),
-          collaborators: collabs,
-          fixedPosition: _fixedPosition,
-          color: _color,
-          dontFold: _dontFold,
-          todoList: _todoList,
-          files: fileArgs,
-        );
+        await getIt<BackendNote>().saveNote(event);
       }
 
-      // Pop with the saved text so note_card can update in-memory immediately.
-      // For new notes pop true (same as a successful online create).
       if (mounted) {
-        Navigator.of(
-          context,
-        ).pop(_isEditing ? _textController.text.trim() : true);
+        Navigator.of(context).pop();
       }
     } on UnauthorizedException {
       // onUnauthorized callback already handles logout

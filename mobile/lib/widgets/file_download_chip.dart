@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:sophie/main.dart';
 import 'package:sophie/models/note_file.dart';
-import 'package:sophie/services/backend.dart';
+import 'package:sophie/services/backend_note_file.dart';
 
 class FileDownloadChip extends StatefulWidget {
   final NoteFile file;
-  final BackendClient client;
 
-  const FileDownloadChip({super.key, required this.file, required this.client});
+  const FileDownloadChip({super.key, required this.file});
 
   @override
   State<FileDownloadChip> createState() => _FileDownloadChipState();
@@ -59,9 +59,10 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
     return false;
   }
 
-  Future<void> _download() async {
+  Future _download() async {
     if (!await _ensureStoragePermission()) return;
     if (!mounted) return;
+    if (widget.file.id == null) return;
 
     setState(() => _downloading = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -73,7 +74,7 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
     );
     try {
       final path = '/storage/emulated/0/Download/${widget.file.fileName}';
-      await widget.client.noteFile.downloadFileTo(widget.file.id, path);
+      await getIt<BackendNoteFile>().downloadFileTo(widget.file.id!, path);
       // Notify MediaStore so the file appears in file explorers immediately.
       await const MethodChannel(
         'sophie/media_scanner',

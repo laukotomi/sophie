@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:sophie/events/note_file_deleted_event.dart';
 
 class BackendNoteFile {
   static const _uploadTimeout = Duration(seconds: 60);
@@ -16,7 +17,7 @@ class BackendNoteFile {
     required this.timeout,
   });
 
-  Future<void> downloadFileTo(String fileId, String destPath) async {
+  Future downloadFileTo(String fileId, String destPath) async {
     final request = http.Request(
       'GET',
       Uri.parse('$baseUrl/api/files?id=${Uri.encodeQueryComponent(fileId)}'),
@@ -39,11 +40,11 @@ class BackendNoteFile {
     }
   }
 
-  Future<void> deleteFile(String fileId) async {
+  Future deleteFile(NoteFileDeletedEvent event) async {
     final response = await http
         .delete(
           Uri.parse(
-            '$baseUrl/api/files?id=${Uri.encodeQueryComponent(fileId)}',
+            '$baseUrl/api/files?id=${Uri.encodeQueryComponent(event.fileId)}',
           ),
           headers: getHeaders(false),
         )

@@ -1,9 +1,15 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/models/dashboard_data.dart';
+import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend_note.dart';
 import 'package:sophie/services/backend_note_file.dart';
 import 'package:sophie/services/backend_task.dart';
+
+class NotFoundException implements Exception {
+  const NotFoundException();
+}
 
 class UnauthorizedException implements Exception {
   const UnauthorizedException();
@@ -13,15 +19,13 @@ class BackendClient {
   static const _timeout = Duration(seconds: 10);
 
   final String baseUrl;
-  final void Function()? onUnauthorized;
   String? _token;
 
-  BackendClient({required this.baseUrl, String? token, this.onUnauthorized})
-    : _token = token;
+  BackendClient({required this.baseUrl, String? token}) : _token = token;
 
   void _checkUnauthorized(int statusCode) {
     if (statusCode == 401) {
-      onUnauthorized?.call();
+      AppEventBus.instance.emit(AppLogoutEvent());
       throw const UnauthorizedException();
     }
   }

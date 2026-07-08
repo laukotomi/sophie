@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:get_it/get_it.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:sophie/services/backend.dart';
@@ -8,6 +9,8 @@ import 'package:sophie/screens/home_screen.dart';
 import 'package:sophie/screens/login_screen.dart';
 import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/storage.dart';
+
+final getIt = GetIt.instance;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,7 +38,6 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  BackendClient? _client;
   String? _token;
 
   @override
@@ -43,32 +45,29 @@ class _MainAppState extends State<MainApp> {
     super.initState();
     _token = widget.initialToken;
     if (_token != null && widget.initialServerUrl != null) {
-      _client = BackendClient(
-        baseUrl: widget.initialServerUrl!,
-        token: _token,
-        onUnauthorized: _onLoggedOut,
-      );
+      _onLoggedIn(_token!, widget.initialServerUrl!);
     }
 
     AlertNotifications.requestPermissions();
   }
 
   void _onLoggedIn(String token, String serverUrl) {
+    final client = BackendClient(baseUrl: serverUrl, token: token);
+    getIt.registerSingleton(client);
+    getIt.registerSingleton(client.note);
+    getIt.registerSingleton(client.task);
+    getIt.registerSingleton(client.noteFile);
+
     setState(() {
       _token = token;
-      _client = BackendClient(
-        baseUrl: serverUrl,
-        token: token,
-        onUnauthorized: _onLoggedOut,
-      );
     });
   }
 
-  Future<void> _onLoggedOut() async {
+  Future _onLoggedOut() async {
     await Storage.clear();
+    getIt.reset();
     setState(() {
       _token = null;
-      _client = null;
     });
   }
 
@@ -86,7 +85,7 @@ class _MainAppState extends State<MainApp> {
               initialServerUrl: widget.initialServerUrl,
               onLoggedIn: _onLoggedIn,
             )
-          : HomeScreen(client: _client!, onLoggedOut: _onLoggedOut),
+          : HomeScreen(onLoggedOut: _onLoggedOut),
     );
   }
 }

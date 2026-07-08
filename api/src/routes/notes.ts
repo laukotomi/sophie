@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { editOrCreateNote, deleteNote, acquireNoteLock, releaseNoteLock, refreshNoteLock, getNoteHistory, syncOfflineNote } from '../note_queries.js';
+import { editOrCreateNote, deleteNote, acquireNoteLock, releaseNoteLock, refreshNoteLock, getNoteHistory } from '../note_queries.js';
 import { requireAuth, type AuthVariables } from '../middleware.js';
 import { CollaboratorInfo, NoteFormData } from '../models.js';
 
@@ -159,45 +159,6 @@ notes.patch('/edit', async (c) => {
     }
 
     return new Response(null, { status: 204 });
-});
-
-notes.post('/sync', async (c) => {
-    const user = c.get('user');
-    const body = await c.req.json().catch(() => null);
-
-    if (!body || typeof body.noteId !== 'string' || !body.noteId.trim())
-        return c.json({ error: 'noteId is required' }, 400);
-    if (typeof body.text !== 'string' || !body.text.trim())
-        return c.json({ error: 'text is required' }, 400);
-    if (typeof body.baseUpdatedAt !== 'string')
-        return c.json({ error: 'baseUpdatedAt is required' }, 400);
-    if (typeof body.localSavedAt !== 'string')
-        return c.json({ error: 'localSavedAt is required' }, 400);
-
-    try {
-        const collaborators = Array.isArray(body.collaborators)
-            ? (body.collaborators as CollaboratorInfo[])
-            : undefined;
-
-        const result = await syncOfflineNote(user.id, {
-            noteId: body.noteId.trim(),
-            text: body.text.trim(),
-            color: typeof body.color === 'string' && body.color ? body.color : null,
-            dontFold: body.dontFold === true,
-            todoList: body.todoList === true,
-            collaborators,
-            baseUpdatedAt: body.baseUpdatedAt,
-            localSavedAt: body.localSavedAt,
-        });
-        return c.json(result, 200);
-    } catch (e) {
-        const message = e instanceof Error ? e.message : 'Unknown error';
-        if (message === 'Note not found') return c.json({ error: message }, 404);
-        if (message === 'Forbidden') return c.json({ error: message }, 403);
-        if (message === 'Note is currently being edited') return c.json({ error: message }, 423);
-        console.error('[POST /api/notes/sync] syncOfflineNote failed:', e);
-        return c.json({ error: message }, 500);
-    }
 });
 
 notes.get('/history', async (c) => {

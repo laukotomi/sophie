@@ -1,34 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:sophie/models/app_user.dart';
+import 'package:sophie/main.dart';
 import 'package:sophie/models/note.dart';
 import 'package:sophie/screens/add_note_screen.dart';
 import 'package:sophie/services/backend_note.dart';
+import 'package:sophie/widgets/collapsible_body.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:sophie/services/backend.dart';
 import 'package:sophie/widgets/file_download_chip.dart';
 import 'package:sophie/widgets/note_chip.dart';
 
 class NoteCard extends StatefulWidget {
   final Note note;
-  final List<AppUser> users;
-  final String currentUserId;
-  final BackendClient client;
-  final VoidCallback onEdited;
   final ScrollController scrollController;
-  final bool isActive;
 
   const NoteCard({
     super.key,
     required this.note,
-    required this.users,
-    required this.currentUserId,
-    required this.client,
-    required this.onEdited,
     required this.scrollController,
-    this.isActive = true,
   });
 
   @override
@@ -43,6 +31,7 @@ class _NoteCardState extends State<NoteCard> {
   bool _acquiringLock = false;
   bool _collapsed = true;
   bool _overflows = false;
+  bool _tickerEnabled = true;
   final Set<String> _checkedItems = {};
 
   static const double _maxCollapsedHeight = 300;
@@ -54,24 +43,30 @@ class _NoteCardState extends State<NoteCard> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final active = TickerMode.valuesOf(context).enabled;
+    if (active == _tickerEnabled) return;
+    final wasActive = _tickerEnabled;
+    _tickerEnabled = active;
+    if (!active && _overlayController.isShowing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _overlayController.isShowing) _overlayController.hide();
+      });
+    }
+    if (active && !wasActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onScroll();
+      });
+    }
+  }
+
+  @override
   void didUpdateWidget(NoteCard old) {
     super.didUpdateWidget(old);
     if (old.scrollController != widget.scrollController) {
       old.scrollController.removeListener(_onScroll);
       widget.scrollController.addListener(_onScroll);
-    }
-    if (!widget.isActive && _overlayController.isShowing) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _overlayController.isShowing) _overlayController.hide();
-      });
-    }
-    if (widget.isActive && !old.isActive) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _onScroll();
-      });
-    }
-    if (old.note.id != widget.note.id) {
-      _checkedItems.clear();
     }
   }
 
@@ -82,7 +77,7 @@ class _NoteCardState extends State<NoteCard> {
   }
 
   void _onScroll() {
-    if (!mounted || !widget.isActive) {
+    if (!mounted || !_tickerEnabled) {
       if (_overlayController.isShowing) _overlayController.hide();
       return;
     }
@@ -120,14 +115,15 @@ class _NoteCardState extends State<NoteCard> {
     }
   }
 
-  Future<void> _openEdit(BuildContext ctx) async {
+  Future _openEdit(BuildContext ctx) async {
     if (_acquiringLock) return;
     setState(() => _acquiringLock = true);
 
     String latestText;
     bool offlineMode = false;
     try {
-      latestText = await widget.client.note.acquireNoteLock(widget.note.id);
+      final result = await getIt<BackendNote>().acquireNoteLock(widget.note.id);
+      latestText = result.text;
     } on NoteLockedException {
       if (!ctx.mounted) return;
       setState(() => _acquiringLock = false);
@@ -147,34 +143,18 @@ class _NoteCardState extends State<NoteCard> {
     }
 
     if (!ctx.mounted) return;
-    final originalText = widget.note.text;
     widget.note.text = widget.note.todoList && _checkedItems.isNotEmpty
         ? _removeCheckedItems(latestText)
         : latestText;
 
     setState(() => _acquiringLock = false);
 
-    final result = await Navigator.of(ctx).push<Object?>(
+    await Navigator.of(ctx).push<Object?>(
       MaterialPageRoute(
-        builder: (_) => AddNoteScreen(
-          client: widget.client,
-          users: widget.users,
-          currentUserId: widget.currentUserId,
-          existingNote: widget.note,
-          offlineMode: offlineMode,
-        ),
+        builder: (_) =>
+            AddNoteScreen(existingNote: widget.note, offlineMode: offlineMode),
       ),
     );
-
-    if (result == true) {
-      widget.onEdited();
-    } else if (result is String) {
-      // Offline save: update the in-memory note text without a full refresh.
-      setState(() => widget.note.text = result);
-    } else {
-      // Discarded: restore original text (needed when checked items were removed).
-      setState(() => widget.note.text = originalText);
-    }
   }
 
   Widget _editButton(BuildContext ctx) {
@@ -281,9 +261,7 @@ class _NoteCardState extends State<NoteCard> {
                   spacing: 6,
                   runSpacing: 4,
                   children: widget.note.files
-                      .map(
-                        (f) => FileDownloadChip(file: f, client: widget.client),
-                      )
+                      .map((f) => FileDownloadChip(file: f))
                       .toList(),
                 ),
               ],
@@ -334,7 +312,7 @@ class _NoteCardState extends State<NoteCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _CollapsibleBody(
+        CollapsibleBody(
           maxHeight: _maxCollapsedHeight,
           collapsed: _collapsed,
           onOverflowDetected: (overflows) {
@@ -526,102 +504,3 @@ class _ListItemSegment extends _TodoSegment {
 }
 
 class _SpacerSegment extends _TodoSegment {}
-
-/// Clips [child] to [maxHeight] when [collapsed], and calls [onOverflowDetected]
-/// post-frame whenever the child's natural height exceeds [maxHeight].
-class _CollapsibleBody extends SingleChildRenderObjectWidget {
-  const _CollapsibleBody({
-    required this.maxHeight,
-    required this.collapsed,
-    required this.onOverflowDetected,
-    required Widget child,
-  }) : super(child: child);
-
-  final double maxHeight;
-  final bool collapsed;
-  final void Function(bool overflows) onOverflowDetected;
-
-  @override
-  _RenderCollapsibleBody createRenderObject(BuildContext context) =>
-      _RenderCollapsibleBody(
-        maxHeight: maxHeight,
-        collapsed: collapsed,
-        onOverflowDetected: onOverflowDetected,
-      );
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderCollapsibleBody renderObject,
-  ) {
-    renderObject
-      ..maxHeight = maxHeight
-      ..collapsed = collapsed
-      ..onOverflowDetected = onOverflowDetected;
-  }
-}
-
-class _RenderCollapsibleBody extends RenderProxyBox {
-  _RenderCollapsibleBody({
-    required double maxHeight,
-    required bool collapsed,
-    required void Function(bool) onOverflowDetected,
-  }) : _maxHeight = maxHeight,
-       _collapsed = collapsed,
-       _onOverflowDetected = onOverflowDetected;
-
-  double _maxHeight;
-  double get maxHeight => _maxHeight;
-  set maxHeight(double v) {
-    if (_maxHeight == v) return;
-    _maxHeight = v;
-    markNeedsLayout();
-  }
-
-  bool _collapsed;
-  bool get collapsed => _collapsed;
-  set collapsed(bool v) {
-    if (_collapsed == v) return;
-    _collapsed = v;
-    markNeedsLayout();
-  }
-
-  void Function(bool) _onOverflowDetected;
-  // ignore: avoid_setters_without_getters
-  set onOverflowDetected(void Function(bool) v) => _onOverflowDetected = v;
-
-  @override
-  void performLayout() {
-    // Layout child unconstrained vertically to measure its natural height.
-    child!.layout(
-      constraints.copyWith(maxHeight: double.infinity),
-      parentUsesSize: true,
-    );
-    final naturalHeight = child!.size.height;
-    final overflows = naturalHeight > _maxHeight;
-
-    // Defer notification to avoid calling setState during layout.
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      _onOverflowDetected(overflows);
-    });
-
-    final displayHeight = _collapsed
-        ? naturalHeight.clamp(0.0, _maxHeight)
-        : naturalHeight;
-    size = constraints.constrain(Size(child!.size.width, displayHeight));
-  }
-
-  @override
-  void paint(PaintingContext context, Offset offset) {
-    if (_collapsed && child!.size.height > size.height) {
-      context.pushClipRect(
-        needsCompositing,
-        offset,
-        Offset.zero & size,
-        (ctx, off) => super.paint(ctx, off),
-      );
-    } else {
-      super.paint(context, offset);
-    }
-  }
-}

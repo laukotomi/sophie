@@ -20,13 +20,13 @@ class SnoozePickerScreen extends StatelessWidget {
     (label: '2 hours', duration: Duration(hours: 2)),
   ];
 
-  Future<void> _snoozeFor(BuildContext context, Duration duration) async {
+  Future _snoozeFor(BuildContext context, Duration duration) async {
     final fireAt = DateTime.now().add(duration);
     await AlertNotifications.setAlarmAt(alarmId, fireAt, taskId, body ?? '');
     if (context.mounted) Navigator.of(context).pop();
   }
 
-  Future<void> _pickCustomTime(BuildContext context) async {
+  Future _pickCustomTime(BuildContext context) async {
     final now = TimeOfDay.now();
     final picked = await showTimePicker(context: context, initialTime: now);
     if (picked == null || !context.mounted) return;

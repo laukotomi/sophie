@@ -5,8 +5,8 @@ import 'package:alarm/alarm.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:sophie/models/alert.dart';
 import 'package:sophie/models/task.dart';
-import 'package:sophie/models/task_alert.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/snooze_picker_screen.dart';
 import 'package:sophie/services/storage.dart';
@@ -17,16 +17,13 @@ import 'package:sophie/services/storage.dart';
 /// 1. Call [init] once from [main] — safe with no Activity.
 /// 2. Call [requestPermissions] from a widget's [State.initState] — requires
 ///    a live Activity for the permission dialog.
-/// 3. Call [scheduleForTask] after every task create / update.
+/// 3. Call [scheduleAlerts] after every task create / update.
 /// 4. Call [cancelForTask] after a task is deleted.
 class AlertNotifications {
   static final navigatorKey = GlobalKey<NavigatorState>();
 
   static final _refreshController = StreamController<void>.broadcast();
   static Stream<void> get refreshRequests => _refreshController.stream;
-
-  static final _snoozeQueueController = StreamController<void>.broadcast();
-  static Stream<void> get snoozeQueueChanges => _snoozeQueueController.stream;
 
   static const _actionsChannelKey = 'task_alarm_actions';
   static const _stopActionKey = 'STOP_ALARM';
@@ -35,14 +32,14 @@ class AlertNotifications {
 
   /// Initialises the alarm package.
   /// Safe to call from [main] before [runApp].
-  static Future<void> init() async {
+  static Future init() async {
     await _initAwesomeNotifications();
     await Alarm.init();
   }
 
   /// Requests the permissions required for alarms and notifications.
   /// Must be called from a widget with a live Activity (e.g. [State.initState]).
-  static Future<void> requestPermissions() async {
+  static Future requestPermissions() async {
     await Permission.notification.request();
     if (Platform.isAndroid) {
       await Permission.scheduleExactAlarm.request();
@@ -52,35 +49,40 @@ class AlertNotifications {
 
   /// Cancels any existing alerts for [task] and schedules new ones for every
   /// future alert time defined on the task.
-  static Future<void> scheduleForTask(Task task) async {
-    await cancelForTask(task.id);
+  static Future scheduleAlerts(
+    String taskId,
+    DateTime? taskDueAt,
+    List<Alert> alerts,
+    String text,
+  ) async {
+    await cancelForTask(taskId);
 
-    final newIds = <int>[];
+    int alertCount = 0;
     final now = DateTime.now();
 
-    for (final alert in task.alerts) {
-      final fireAt = _resolveFireAt(alert, task.dueAt);
+    for (final alert in alerts) {
+      final fireAt = _resolveFireAt(alert, taskDueAt);
       if (fireAt == null || !fireAt.isAfter(now)) continue;
 
-      final id = _notifId(task.id, newIds.length);
-      setAlarmAt(id, fireAt, task.id, task.text);
+      final alarmId = _notifId(taskId, alertCount);
+      setAlarmAt(alarmId, fireAt, taskId, text);
 
-      newIds.add(id);
+      alertCount++;
     }
 
-    if (newIds.isNotEmpty) {
-      await Storage.setAlertCount(task.id, newIds.length);
+    if (alertCount > 0) {
+      await Storage.setAlertCount(taskId, alertCount);
     }
   }
 
   static Future setAlarmAt(
-    int id,
+    int alarmId,
     DateTime fireAt,
     String taskId,
     String text,
   ) async {
     final alarmSettings = AlarmSettings(
-      id: id,
+      id: alarmId,
       dateTime: fireAt,
       // payload: jsonEncode({'taskId': task.id}),
       assetAudioPath: 'assets/task_alert.mp3',
@@ -106,17 +108,17 @@ class AlertNotifications {
 
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
-        id: id,
+        id: alarmId,
         channelKey: _actionsChannelKey,
         title: 'Sophie',
         body: text,
-        payload: {'alarmId': '$id', 'taskId': taskId},
+        payload: {'alarmId': '$alarmId', 'taskId': taskId},
         autoDismissible: false,
         wakeUpScreen: true,
         locked: true,
       ),
       schedule: NotificationCalendar.fromDate(
-        date: fireAt.add(Duration(seconds: 2)),
+        date: fireAt.add(Duration(seconds: 1)),
         allowWhileIdle: true,
         preciseAlarm: true,
       ),
@@ -130,23 +132,20 @@ class AlertNotifications {
 
   /// Cancels all existing alarms (derived from the old cached data) then
   /// reschedules from [freshTasks]. Call this after every dashboard refresh.
-  static Future<void> rescheduleAll(List<Task> freshTasks) async {
+  static Future rescheduleAll(List<Task> freshTasks) async {
     // Cancel alarms for every previously tracked task, including ones that may
     // have been deleted from the server since the last launch.
-    final cachedData = Storage.getDashboardData();
-    if (cachedData != null) {
-      for (final task in cachedData.tasks) {
-        await cancelForTask(task.id);
-      }
+    final cachedData = Storage.getAlertCountsMap();
+    for (final taskId in cachedData.keys) {
+      await cancelForTask(taskId);
     }
     // Schedule fresh alarms for all pending tasks.
     for (final task in freshTasks.where((t) => t.doneAt == null)) {
-      await scheduleForTask(task);
+      await scheduleAlerts(task.id, task.dueAt, task.alerts, task.text);
     }
   }
 
-  /// Cancels all pending notifications that were scheduled for [taskId].
-  static Future<void> cancelForTask(String taskId) async {
+  static Future cancelForTask(String taskId) async {
     final count = Storage.getAlertCount(taskId);
     for (var i = 0; i < count; i++) {
       final alarmId = _notifId(taskId, i);
@@ -169,14 +168,10 @@ class AlertNotifications {
   // ---------------------------------------------------------------------------
 
   /// Resolves the absolute fire time from an alert definition.
-  static DateTime? _resolveFireAt(TaskAlert alert, DateTime? dueAt) {
+  static DateTime? _resolveFireAt(Alert alert, DateTime? dueAt) {
     if (alert.alertAt != null) return alert.alertAt;
     if (alert.timeBefore != null && dueAt != null) {
-      // timeBefore is stored as 'HH:MM:SS'
-      final parts = alert.timeBefore!.split(':');
-      final h = int.tryParse(parts[0]) ?? 0;
-      final m = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
-      return dueAt.subtract(Duration(hours: h, minutes: m));
+      return dueAt.subtract(alert.timeBefore!);
     }
     return null;
   }
@@ -193,7 +188,7 @@ class AlertNotifications {
     return h + alertIndex;
   }
 
-  static Future<void> _initAwesomeNotifications() async {
+  static Future _initAwesomeNotifications() async {
     await AwesomeNotifications().initialize(null, [
       NotificationChannel(
         channelGroupKey: 'sophie_tasks',
@@ -212,7 +207,7 @@ class AlertNotifications {
   }
 
   @pragma('vm:entry-point')
-  static Future<void> _onNotificationAction(ReceivedAction action) async {
+  static Future _onNotificationAction(ReceivedAction action) async {
     final alarmId = int.tryParse(action.payload?['alarmId'] ?? '');
     final taskId = action.payload?['taskId'];
     if (alarmId == null || taskId == null) return;
@@ -226,7 +221,6 @@ class AlertNotifications {
 
     if (action.buttonKeyPressed == _snoozeActionKey) {
       await Storage.addSnoozePending(alarmId, taskId, action.body);
-      _snoozeQueueController.add(null);
       await navigatorKey.currentState?.push<void>(
         MaterialPageRoute(
           builder: (_) => SnoozePickerScreen(
@@ -244,12 +238,13 @@ class AlertNotifications {
     }
   }
 
-  static Future<void> _markTaskDone(String taskId) async {
+  static Future _markTaskDone(String taskId) async {
     final serverUrl = Storage.serverUrl;
     final token = Storage.authToken;
     if (serverUrl == null || token == null) return;
 
     final client = BackendClient(baseUrl: serverUrl, token: token);
+
     await client.task.setTaskDone(taskId: taskId, done: true);
     await cancelForTask(taskId);
     _refreshController.add(null);

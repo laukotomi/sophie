@@ -1,43 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:rrule_generator/rrule_generator.dart';
+import 'package:sophie/events/task_deleted_event.dart';
+import 'package:sophie/events/task_saved_event.dart';
+import 'package:sophie/main.dart';
+import 'package:sophie/models/alert.dart';
 import 'package:sophie/models/app_user.dart';
-import 'package:sophie/models/pending_task_edit.dart';
 import 'package:sophie/models/task.dart';
-import 'package:sophie/models/task_alert.dart';
-import 'package:sophie/services/backend.dart';
 import 'package:sophie/services/alert_notifications.dart';
-import 'package:sophie/services/storage.dart';
-import 'package:sophie/utils/time_utils.dart';
+import 'package:sophie/services/backend_task.dart';
+import 'package:sophie/services/task_events.dart';
+import 'package:sophie/services/user_service.dart';
 import 'package:sophie/dialogs/discard_dialog.dart';
 import 'package:sophie/dialogs/task_settings_dialog.dart';
 
-/// An alert is stored either as an absolute datetime or as a duration before dueAt.
-/// When the user picks a time and _dueAt is set, we compute the difference and
-/// store it as [timeBefore]. Otherwise we store [alertAt].
-class _Alert {
-  final DateTime? alertAt;
-  final Duration? timeBefore;
-
-  const _Alert.absolute(DateTime this.alertAt) : timeBefore = null;
-  const _Alert.relative(Duration this.timeBefore) : alertAt = null;
-}
-
 class AddTaskScreen extends StatefulWidget {
-  final List<AppUser> users;
-  final String currentUserId;
-  final BackendClient client;
   // When non-null the screen is in edit mode
   final Task? existingTask;
   final bool offlineMode;
 
-  const AddTaskScreen({
-    super.key,
-    required this.users,
-    required this.currentUserId,
-    required this.client,
-    this.existingTask,
-    this.offlineMode = false,
-  });
+  const AddTaskScreen({super.key, this.existingTask, this.offlineMode = false});
 
   @override
   State<AddTaskScreen> createState() => _AddTaskScreenState();
@@ -45,14 +26,18 @@ class AddTaskScreen extends StatefulWidget {
 
 class _AddTaskScreenState extends State<AddTaskScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _users = getIt<UserService>().users;
+  final _currentUserId = getIt<UserService>().currentUserId;
   late final TextEditingController _textController;
-  bool _saving = false;
-  bool _deleting = false;
+
   late DateTime? _dueAt;
   late String _rrule;
-  late final List<_Alert> _alerts;
+  late final List<Alert> _alerts;
   late final List<AppUser> _collaborators;
   String? _color;
+
+  bool _saving = false;
+  bool _deleting = false;
 
   bool get _isEditing => widget.existingTask != null;
 
@@ -65,14 +50,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           _alerts.isNotEmpty ||
           _collaborators.isNotEmpty;
     }
-    final originalCollabIds = t.collaborators.map((c) => c.id).toSet();
     final currentCollabIds = _collaborators.map((u) => u.id).toSet();
     return _textController.text.trim() != t.text.trim() ||
         _dueAt != t.dueAt ||
         _rrule != (t.rrule ?? '') ||
         _color != t.color ||
-        originalCollabIds.length != currentCollabIds.length ||
-        !originalCollabIds.containsAll(currentCollabIds) ||
+        t.collaborators.length != currentCollabIds.length ||
+        !(currentCollabIds.containsAll(t.collaborators)) ||
         _alerts.length != t.alerts.length;
   }
 
@@ -84,22 +68,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     _dueAt = t?.dueAt;
     _rrule = t?.rrule ?? '';
     _color = t?.color;
-    // Pre-populate alerts from existing task
-    _alerts = t == null
-        ? []
-        : t.alerts.map((a) {
-            if (a.alertAt != null) return _Alert.absolute(a.alertAt!);
-            // Parse 'HH:MM:SS' timeBefore into a Duration
-            final parts = (a.timeBefore ?? '0:0:0').split(':');
-            final h = int.tryParse(parts[0]) ?? 0;
-            final m = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
-            return _Alert.relative(Duration(hours: h, minutes: m));
-          }).toList();
+    _alerts = t?.alerts ?? [];
+
     // Pre-populate collaborators from existing task
     _collaborators = t == null
         ? []
         : t.collaborators
-              .map((c) => widget.users.where((u) => u.id == c.id).firstOrNull)
+              .map((userId) => _users.where((u) => u.id == userId).firstOrNull)
               .whereType<AppUser>()
               .toList();
   }
@@ -110,7 +85,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     super.dispose();
   }
 
-  Future<void> _pickDateTime() async {
+  Future _pickDateTime() async {
     final now = DateTime.now();
     final date = await showDatePicker(
       context: context,
@@ -135,7 +110,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     });
   }
 
-  Future<void> _addAlert() async {
+  Future _addAlert() async {
     final now = DateTime.now();
     final date = await showDatePicker(
       context: context,
@@ -171,72 +146,39 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         }
         return;
       }
-      setState(() => _alerts.add(_Alert.relative(diff)));
+      setState(() => _alerts.add(Alert.relative(diff)));
     } else {
-      setState(() => _alerts.add(_Alert.absolute(picked)));
+      setState(() => _alerts.add(Alert.absolute(picked)));
     }
   }
 
-  Future<void> _save() async {
+  Future _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
 
-    // Offline path: queue the create/edit and pop immediately.
-    if (widget.offlineMode) {
-      try {
-        final taskId = _isEditing
-            ? widget.existingTask!.id
-            : 'local_${DateTime.now().millisecondsSinceEpoch}';
-        await Storage.addPendingTaskEdit(
-          PendingTaskEdit(
-            taskId: taskId,
-            isNew: !_isEditing,
-            text: _textController.text.trim(),
-            rrule: _rrule.isNotEmpty ? _rrule : null,
-            dueAt: _dueAt?.toUtc().toIso8601String(),
-            color: _color,
-            collaboratorIds: _collaborators.map((u) => u.id).toList(),
-            alerts: _alerts.map((a) {
-              if (a.alertAt != null) {
-                return {
-                  'type': 'absolute',
-                  'alertAt': a.alertAt!.toUtc().toIso8601String(),
-                };
-              }
-              return {
-                'type': 'relative',
-                'timeBefore': TimeUtils.durationToTime(a.timeBefore!),
-              };
-            }).toList(),
-          ),
-        );
-        if (mounted) Navigator.of(context).pop(true);
-      } catch (_) {
-        if (mounted) {
-          setState(() => _saving = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to save offline. Please try again.'),
-            ),
-          );
-        }
-      }
-      return;
-    }
-
     try {
-      final taskId = await widget.client.task.saveTask(
-        _isEditing ? widget.existingTask!.id : null,
-        _textController.text.trim(),
-        rrule: _rrule.isNotEmpty ? _rrule : null,
-        dueAt: _dueAt,
-        color: _color,
+      final event = TaskSavedEvent(
+        taskId: widget.existingTask?.id,
+        text: _textController.text.trim(),
+        alerts: _alerts,
         collaboratorIds: _collaborators.map((u) => u.id).toList(),
-        alerts: _alerts
-            .map((a) => (alertAt: a.alertAt, timeBefore: a.timeBefore))
-            .toList(),
+        color: _color,
+        dueAt: _dueAt,
+        rrule: _rrule.isNotEmpty ? _rrule : null,
       );
-      await AlertNotifications.scheduleForTask(_buildSchedulingTask(taskId));
+
+      if (widget.offlineMode) {
+        TaskEventBus.instance.emit(event);
+      } else {
+        await getIt<BackendTask>().saveTask(event);
+      }
+
+      await AlertNotifications.scheduleAlerts(
+        event.taskId,
+        event.dueAt,
+        event.alerts,
+        event.text,
+      );
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -248,29 +190,44 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     }
   }
 
-  /// Builds a minimal [Task] containing only the fields [AlertNotifications]
-  /// needs: id, text, dueAt, and alerts.
-  Task _buildSchedulingTask(String taskId) {
-    String pad(int n) => n.toString().padLeft(2, '0');
-    return Task(
-      id: taskId,
-      text: _textController.text.trim(),
-      dueAt: _dueAt,
-      alerts: _alerts.map((a) {
-        if (a.alertAt != null) {
-          return TaskAlert(id: 0, alertAt: a.alertAt);
-        }
-        final d = a.timeBefore!;
-        return TaskAlert(
-          id: 0,
-          timeBefore:
-              '${pad(d.inHours)}:${pad(d.inMinutes.remainder(60))}:${pad(d.inSeconds.remainder(60))}',
-        );
-      }).toList(),
-      isOwner: true,
-      createdAt: DateTime.now(),
-      collaborators: [],
+  Future _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete task'),
+        content: const Text('This cannot be undone. Are you sure?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
+    if (confirmed != true || !mounted) return;
+    setState(() => _deleting = true);
+    try {
+      if (widget.offlineMode) {
+        TaskEventBus.instance.emit(
+          TaskDeletedEvent(taskId: widget.existingTask!.id),
+        );
+      } else {
+        await getIt<BackendTask>().deleteTask(taskId: widget.existingTask!.id);
+      }
+      await AlertNotifications.cancelForTask(widget.existingTask!.id);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _deleting = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to delete task: $e')));
+      }
+    }
   }
 
   String _formatDateTime(DateTime dt) {
@@ -281,7 +238,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     return '$date  $time';
   }
 
-  String _formatAlert(_Alert alert) {
+  String _formatAlert(Alert alert) {
     if (alert.timeBefore != null) {
       final d = alert.timeBefore!;
       final hours = d.inHours;
@@ -329,49 +286,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       )
                     : const Icon(Icons.delete_outline),
                 tooltip: 'Delete task',
-                onPressed: (_saving || _deleting)
-                    ? null
-                    : () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Delete task'),
-                            content: const Text(
-                              'This cannot be undone. Are you sure?',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(ctx).pop(false),
-                                child: const Text('Cancel'),
-                              ),
-                              FilledButton(
-                                onPressed: () => Navigator.of(ctx).pop(true),
-                                child: const Text('Delete'),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (confirmed != true || !mounted) return;
-                        setState(() => _deleting = true);
-                        try {
-                          await widget.client.task.deleteTask(
-                            taskId: widget.existingTask!.id,
-                          );
-                          await AlertNotifications.cancelForTask(
-                            widget.existingTask!.id,
-                          );
-                          if (context.mounted) Navigator.of(context).pop(true);
-                        } catch (e) {
-                          if (context.mounted) {
-                            setState(() => _deleting = false);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to delete task: $e'),
-                              ),
-                            );
-                          }
-                        }
-                      },
+                onPressed: (_saving || _deleting) ? null : _delete,
               ),
             IconButton(
               icon: const Icon(Icons.settings_outlined),
@@ -492,10 +407,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   isDense: true,
                 ),
                 initialValue: null,
-                items: widget.users
+                items: _users
                     .where(
                       (u) =>
-                          u.id != widget.currentUserId &&
+                          u.id != _currentUserId &&
                           !_collaborators.any((c) => c.id == u.id),
                     )
                     .map(

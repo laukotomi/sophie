@@ -1,31 +1,21 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:sophie/models/dashboard_data.dart';
+import 'package:sophie/events/app_logout_event.dart';
+import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/models/task.dart';
-import 'package:sophie/services/backend.dart';
+import 'package:sophie/services/app_events.dart';
 import 'package:sophie/screens/add_task_screen.dart';
-import 'package:sophie/screens/snooze_picker_screen.dart';
-import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/storage.dart';
+import 'package:sophie/services/task_events.dart';
 import 'package:sophie/widgets/task_card.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 class TasksScreen extends StatefulWidget {
-  final DashboardData data;
-  final BackendClient client;
-  final VoidCallback onLoggedOut;
-  final VoidCallback onRefresh;
+  final List<Task> tasks;
   final bool usingCache;
 
-  const TasksScreen({
-    super.key,
-    required this.data,
-    required this.client,
-    required this.onLoggedOut,
-    required this.onRefresh,
-    this.usingCache = false,
-  });
+  const TasksScreen({super.key, required this.tasks, this.usingCache = false});
 
   @override
   State<TasksScreen> createState() => _TasksScreenState();
@@ -33,20 +23,20 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  late final StreamSubscription<void>? _snoozeQueueSub;
+  late final StreamSubscription<TaskEvent>? _taskEventSub;
+  late final AppEventSubscription? _appEventSub;
+
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  bool _hasPendingSnooze = false;
-  StreamSubscription<void>? _snoozeQueueSub;
 
   @override
   void initState() {
     super.initState();
-    _hasPendingSnooze = Storage.getSnoozePending().isNotEmpty;
-    _snoozeQueueSub = AlertNotifications.snoozeQueueChanges.listen((_) {
-      if (mounted) {
-        setState(
-          () => _hasPendingSnooze = Storage.getSnoozePending().isNotEmpty,
-        );
+    _taskEventSub = TaskEventBus.instance.stream.listen(_handleTaskEvent);
+    _appEventSub = AppEventBus.instance.listen((event) async {
+      if (event is AppSyncEvent) {
+        await _syncTaskChanges();
       }
     });
   }
@@ -54,35 +44,27 @@ class _TasksScreenState extends State<TasksScreen> {
   @override
   void dispose() {
     _snoozeQueueSub?.cancel();
+    _taskEventSub?.cancel();
+    _appEventSub?.cancel();
     super.dispose();
   }
 
-  Future<void> _openPendingSnooze() async {
-    final item = await Storage.popLastSnoozePending();
-    if (item == null) return;
-    if (mounted) {
-      setState(() => _hasPendingSnooze = Storage.getSnoozePending().isNotEmpty);
-    }
-    if (!mounted) return;
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => SnoozePickerScreen(
-          alarmId: item['alarmId'] as int,
-          taskId: item['taskId'] as String,
-          body: item['body'] as String?,
-        ),
-      ),
-    );
+  Future _syncTaskChanges() async {}
+
+  void _handleTaskEvent(TaskEvent event) {
+    if (!widget.usingCache) return;
+
+    Storage.addTaskEvent(event);
   }
 
-  Set<DateTime> get _daysWithTasks => widget.data.tasks
+  Set<DateTime> get _daysWithTasks => widget.tasks
       .where((t) => t.dueAt != null)
       .map((t) => DateTime(t.dueAt!.year, t.dueAt!.month, t.dueAt!.day))
       .toSet();
 
   List<Task> get _filteredTasks {
-    if (_selectedDay == null) return widget.data.tasks;
-    return widget.data.tasks
+    if (_selectedDay == null) return widget.tasks;
+    return widget.tasks
         .where((t) => t.dueAt != null && isSameDay(t.dueAt!, _selectedDay!))
         .toList();
   }
@@ -168,12 +150,6 @@ class _TasksScreenState extends State<TasksScreen> {
             ? Text('Tasks  •  ${DateFormat('MMM d').format(_selectedDay!)}')
             : const Text('Sophie Tasks'),
         actions: [
-          if (_hasPendingSnooze)
-            IconButton(
-              icon: const Icon(Icons.snooze),
-              tooltip: 'Pending snooze',
-              onPressed: _openPendingSnooze,
-            ),
           if (widget.usingCache)
             Tooltip(
               message: 'Showing cached data — could not reach server',
@@ -203,7 +179,9 @@ class _TasksScreenState extends State<TasksScreen> {
                   ],
                 ),
               );
-              if (confirmed == true) widget.onLoggedOut();
+              if (confirmed == true) {
+                AppEventBus.instance.emit(AppLogoutEvent());
+              }
             },
           ),
         ],
@@ -211,24 +189,18 @@ class _TasksScreenState extends State<TasksScreen> {
       floatingActionButton: FloatingActionButton(
         heroTag: 'fab_tasks',
         onPressed: () async {
-          final created = await Navigator.of(context).push<bool>(
+          await Navigator.of(context).push<bool>(
             MaterialPageRoute(
-              builder: (_) => AddTaskScreen(
-                users: widget.data.users,
-                currentUserId: widget.data.user.id,
-                client: widget.client,
-                offlineMode: widget.usingCache,
-              ),
+              builder: (_) => AddTaskScreen(offlineMode: widget.usingCache),
             ),
           );
-          if (created == true) widget.onRefresh();
         },
         tooltip: 'Add task',
         child: const Icon(Icons.add),
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          widget.onRefresh();
+          AppEventBus.instance.emit(AppSyncEvent());
         },
         child: filteredTasks.isEmpty
             ? ListView(
@@ -254,14 +226,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   final task = filteredTasks[i];
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: TaskCard(
-                      task: task,
-                      client: widget.client,
-                      onChanged: widget.onRefresh,
-                      allUsers: widget.data.users,
-                      currentUserId: widget.data.user.id,
-                      offlineMode: widget.usingCache,
-                    ),
+                    child: TaskCard(task: task, offlineMode: widget.usingCache),
                   );
                 },
               ),
