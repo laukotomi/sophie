@@ -5,8 +5,11 @@ import 'package:alarm/alarm.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:sophie/events/app_sync_event.dart';
+import 'package:sophie/main.dart';
 import 'package:sophie/models/alert.dart';
 import 'package:sophie/models/task.dart';
+import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/snooze_picker_screen.dart';
 import 'package:sophie/services/storage.dart';
@@ -20,11 +23,6 @@ import 'package:sophie/services/storage.dart';
 /// 3. Call [scheduleAlerts] after every task create / update.
 /// 4. Call [cancelForTask] after a task is deleted.
 class AlertNotifications {
-  static final navigatorKey = GlobalKey<NavigatorState>();
-
-  static final _refreshController = StreamController<void>.broadcast();
-  static Stream<void> get refreshRequests => _refreshController.stream;
-
   static const _actionsChannelKey = 'task_alarm_actions';
   static const _stopActionKey = 'STOP_ALARM';
   static const _doneActionKey = 'MARK_DONE';
@@ -210,7 +208,7 @@ class AlertNotifications {
   static Future _onNotificationAction(ReceivedAction action) async {
     final alarmId = int.tryParse(action.payload?['alarmId'] ?? '');
     final taskId = action.payload?['taskId'];
-    if (alarmId == null || taskId == null) return;
+    if (alarmId == null || taskId == null || action.body == null) return;
 
     await cancelByAlarmId(alarmId);
     if (action.buttonKeyPressed == _stopActionKey) {
@@ -220,13 +218,13 @@ class AlertNotifications {
     await Storage.init();
 
     if (action.buttonKeyPressed == _snoozeActionKey) {
-      await Storage.addSnoozePending(alarmId, taskId, action.body);
+      await Storage.addSnoozePending(alarmId, taskId, action.body!);
       await navigatorKey.currentState?.push<void>(
         MaterialPageRoute(
           builder: (_) => SnoozePickerScreen(
             alarmId: alarmId,
             taskId: taskId,
-            body: action.body,
+            body: action.body!,
           ),
         ),
       );
@@ -247,6 +245,6 @@ class AlertNotifications {
 
     await client.task.setTaskDone(taskId: taskId, done: true);
     await cancelForTask(taskId);
-    _refreshController.add(null);
+    AppEventBus.instance.emit(AppSyncEvent());
   }
 }

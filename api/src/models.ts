@@ -1,4 +1,5 @@
 export type NoteFormData = {
+    noteId: string;
     text: string;
     collaborators: CollaboratorInfo[] | undefined;
     fixedPosition: number | undefined;

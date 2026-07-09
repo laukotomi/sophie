@@ -1,7 +1,7 @@
 import 'package:sophie/services/task_events.dart';
 
 class TaskToggleDoneEvent extends TaskEvent {
-  final int taskId;
+  final String taskId;
 
   TaskToggleDoneEvent({required this.taskId});
 
@@ -14,6 +14,6 @@ class TaskToggleDoneEvent extends TaskEvent {
   }
 
   factory TaskToggleDoneEvent.fromJson(Map<String, dynamic> m) {
-    return TaskToggleDoneEvent(taskId: m['taskId'] as int);
+    return TaskToggleDoneEvent(taskId: m['taskId'] as String);
   }
 }

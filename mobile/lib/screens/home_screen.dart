@@ -6,9 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
+import 'package:sophie/events/note_sync_event.dart';
+import 'package:sophie/events/task_sync_event.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/dashboard_data.dart';
 import 'package:sophie/models/task.dart';
+import 'package:sophie/screens/snooze_picker_screen.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/notes_screen.dart';
@@ -34,7 +37,6 @@ class _HomeScreenState extends State<HomeScreen> {
   late Future<DashboardData> _dataFuture;
   bool _usingCache = false;
   StreamSubscription? _navEventSub;
-  StreamSubscription? _refreshSub;
   AppEventSubscription? _appEventSub;
 
   @override
@@ -42,7 +44,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _dataFuture = _loadData();
     _appEventSub = AppEventBus.instance.listen(_handleAppEvent);
-    _refreshSub = AlertNotifications.refreshRequests.listen((_) => _refresh());
     // Background case: app already running, widget tapped → onNewIntent fires.
     _navEventSub = _navEvents.receiveBroadcastStream().listen((route) {
       if (route == 'tasks' && mounted) setState(() => _selectedIndex = 1);
@@ -58,7 +59,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _navEventSub?.cancel();
     _appEventSub?.cancel();
-    _refreshSub?.cancel();
     super.dispose();
   }
 
@@ -88,7 +88,26 @@ class _HomeScreenState extends State<HomeScreen> {
         widget.onLoggedOut();
         break;
       case AppSyncEvent():
-        _refresh();
+        await AppEventBus.instance.emit(NoteSyncEvent());
+        await AppEventBus.instance.emit(TaskSyncEvent());
+        setState(
+          () => _dataFuture = Future(() async {
+            final data = await _loadData();
+            final snooze = await Storage.popLastSnoozePending();
+            if (snooze != null) {
+              await navigatorKey.currentState?.push<void>(
+                MaterialPageRoute(
+                  builder: (_) => SnoozePickerScreen(
+                    alarmId: snooze.alarmId,
+                    taskId: snooze.taskId,
+                    body: snooze.body,
+                  ),
+                ),
+              );
+            }
+            return data;
+          }),
+        );
         break;
     }
   }

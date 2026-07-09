@@ -6,6 +6,7 @@ import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/events/note_deleted_event.dart';
 import 'package:sophie/events/note_file_deleted_event.dart';
 import 'package:sophie/events/note_saved_event.dart';
+import 'package:sophie/events/note_sync_event.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/note.dart';
 import 'package:sophie/models/note_collaborator.dart';
@@ -57,7 +58,7 @@ class _NotesScreenState extends State<NotesScreen> {
     super.initState();
     _noteEventSub = NoteEventBus.instance.stream.listen(_handleNoteEvent);
     _appEventSub = AppEventBus.instance.listen((event) async {
-      if (event is AppSyncEvent) {
+      if (event is NoteSyncEvent) {
         await _syncNoteChanges();
       }
     });
@@ -169,7 +170,7 @@ class _NotesScreenState extends State<NotesScreen> {
             Note(
               collaborators: collabs,
               createdAt: DateTime.now(),
-              id: 'local_${DateTime.now().millisecondsSinceEpoch}',
+              id: event.noteId,
               isOwner: true,
               ownerId: ownerId,
               right: 'owner',

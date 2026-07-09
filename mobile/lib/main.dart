@@ -11,6 +11,7 @@ import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/storage.dart';
 
 final getIt = GetIt.instance;
+final navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -74,7 +75,7 @@ class _MainAppState extends State<MainApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: AlertNotifications.navigatorKey,
+      navigatorKey: navigatorKey,
       theme: ThemeData.dark(useMaterial3: true),
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       supportedLocales: const [Locale('en'), Locale('hu')],

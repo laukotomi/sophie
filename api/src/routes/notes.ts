@@ -6,6 +6,8 @@ import { CollaboratorInfo, NoteFormData } from '../models.js';
 async function parseNoteForm(form: FormData | null): Promise<NoteFormData | null> {
     if (!form) return null;
 
+    const noteId = form.get('noteId');
+    if (typeof noteId !== 'string' || !noteId.trim()) return null;
     const text = form.get('text');
     if (typeof text !== 'string' || !text.trim()) return null;
 
@@ -32,7 +34,8 @@ async function parseNoteForm(form: FormData | null): Promise<NoteFormData | null
     }));
 
     return {
-        text: text.trim(),
+        noteId,
+        text,
         collaborators,
         fixedPosition: fixedPosition !== undefined && !isNaN(fixedPosition) ? fixedPosition : undefined,
         color,
@@ -50,10 +53,10 @@ notes.post('/', async (c) => {
     const user = c.get('user');
     const form = await c.req.formData().catch(() => null);
     const parsed = await parseNoteForm(form);
-    if (!parsed) return c.json({ error: 'text is required' }, 400);
+    if (!parsed) return c.json({ error: 'Invalid form data' }, 400);
 
     try {
-        await editOrCreateNote(user.id, null, parsed);
+        await editOrCreateNote(user.id, false, parsed);
     } catch (e) {
         console.error('[POST /api/notes] editOrCreateNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -67,15 +70,10 @@ notes.put('/', async (c) => {
     const user = c.get('user');
     const form = await c.req.formData().catch(() => null);
     const parsed = await parseNoteForm(form);
-    if (!parsed) return c.json({ error: 'text is required' }, 400);
-
-    const noteIdRaw = form!.get('noteId');
-    if (typeof noteIdRaw !== 'string' || !noteIdRaw.trim()) {
-        return c.json({ error: 'noteId is required' }, 400);
-    }
+    if (!parsed) return c.json({ error: 'Invalid form data' }, 400);
 
     try {
-        await editOrCreateNote(user.id, noteIdRaw, parsed);
+        await editOrCreateNote(user.id, true, parsed);
     } catch (e) {
         console.error('[PUT /api/notes] editOrCreateNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';

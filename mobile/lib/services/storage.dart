@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sophie/models/dashboard_data.dart';
+import 'package:sophie/models/pending_snooze.dart';
 import 'package:sophie/services/note_events.dart';
 import 'package:sophie/services/task_events.dart';
 
@@ -86,41 +87,47 @@ class Storage {
   // Snooze pending queue
   // ---------------------------------------------------------------------------
 
-  static List<Map<String, dynamic>> getSnoozePending() {
+  static List<PendingSnooze> _getSnoozePendings() {
     final raw = _prefs.getString(_snoozePendingKey);
     if (raw == null) return [];
     try {
-      return (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>();
+      return (jsonDecode(raw) as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .map(PendingSnooze.fromJson)
+          .toList();
     } catch (_) {
       return [];
     }
   }
 
-  static Future saveSnoozePendingList(List<Map<String, dynamic>> list) async {
-    await _prefs.setString(_snoozePendingKey, jsonEncode(list));
+  static Future _saveSnoozePendingList(List<PendingSnooze> list) async {
+    await _prefs.setString(
+      _snoozePendingKey,
+      jsonEncode(list.map((e) => e.toJson()).toList()),
+    );
   }
 
   static Future addSnoozePending(
     int alarmId,
     String taskId,
-    String? body,
+    String body,
   ) async {
-    final list = getSnoozePending();
-    list.add({'alarmId': alarmId, 'taskId': taskId, 'body': body});
-    await saveSnoozePendingList(list);
+    final list = _getSnoozePendings()
+      ..add(PendingSnooze(alarmId: alarmId, taskId: taskId, body: body));
+    await _saveSnoozePendingList(list);
   }
 
   static Future removeSnoozePending(int alarmId) async {
-    final list = getSnoozePending()
-      ..removeWhere((e) => e['alarmId'] == alarmId);
-    await saveSnoozePendingList(list);
+    final list = _getSnoozePendings()
+      ..removeWhere((e) => e.alarmId == alarmId);
+    await _saveSnoozePendingList(list);
   }
 
-  static Future<Map<String, dynamic>?> popLastSnoozePending() async {
-    final list = getSnoozePending();
+  static Future<PendingSnooze?> popLastSnoozePending() async {
+    final list = _getSnoozePendings();
     if (list.isEmpty) return null;
     final item = list.removeLast();
-    await saveSnoozePendingList(list);
+    await _saveSnoozePendingList(list);
     return item;
   }
 

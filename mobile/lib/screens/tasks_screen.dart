@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
+import 'package:sophie/events/task_deleted_event.dart';
+import 'package:sophie/events/task_saved_event.dart';
+import 'package:sophie/events/task_sync_event.dart';
+import 'package:sophie/events/task_toggle_done_event.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/screens/add_task_screen.dart';
@@ -35,7 +39,7 @@ class _TasksScreenState extends State<TasksScreen> {
     super.initState();
     _taskEventSub = TaskEventBus.instance.stream.listen(_handleTaskEvent);
     _appEventSub = AppEventBus.instance.listen((event) async {
-      if (event is AppSyncEvent) {
+      if (event is TaskSyncEvent) {
         await _syncTaskChanges();
       }
     });
@@ -55,6 +59,57 @@ class _TasksScreenState extends State<TasksScreen> {
     if (!widget.usingCache) return;
 
     Storage.addTaskEvent(event);
+
+    if (event is TaskDeletedEvent) {
+      widget.tasks.removeWhere((t) => t.id == event.taskId);
+    } else if (event is TaskSavedEvent) {
+      if (!event.isNew) {
+        final task = widget.tasks.firstWhere((t) => t.id == event.taskId);
+        setState(() {
+          task
+            ..alerts = event.alerts
+            ..collaborators = event.collaboratorIds
+            ..color = event.color
+            ..dueAt = event.dueAt
+            ..rrule = event.rrule
+            ..text = event.text;
+        });
+      } else {
+        setState(() {
+          widget.tasks.add(
+            Task(
+              id: event.taskId,
+              text: event.text,
+              rrule: event.rrule,
+              color: event.color,
+              dueAt: event.dueAt,
+              doneAt: null,
+              createdAt: DateTime.now(),
+              isOwner: true,
+              collaborators: event.collaboratorIds,
+              alerts: event.alerts,
+            ),
+          );
+        });
+      }
+
+      widget.tasks.sort((a, b) {
+        if (a.doneAt != null && b.doneAt == null) return 1;
+        if (a.doneAt == null && b.doneAt != null) return -1;
+        if (a.dueAt == null && b.dueAt != null) return -1;
+        if (a.dueAt != null && b.dueAt == null) return 1;
+        if (a.dueAt != null && b.dueAt != null) {
+          final dueDiff = a.dueAt!.compareTo(b.dueAt!);
+          if (dueDiff != 0) return dueDiff;
+        }
+        return b.createdAt.compareTo(a.createdAt);
+      });
+    } else if (event is TaskToggleDoneEvent) {
+      final task = widget.tasks.firstWhere((t) => t.id == event.taskId);
+      setState(() {
+        task.doneAt = task.doneAt == null ? DateTime.now() : null;
+      });
+    }
   }
 
   Set<DateTime> get _daysWithTasks => widget.tasks

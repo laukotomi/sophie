@@ -2,17 +2,17 @@ import 'package:sophie/models/alert.dart';
 
 class Task {
   final String id;
-  final String text;
-  final String? rrule;
-  final String? color;
-  final DateTime? dueAt;
-  final DateTime? doneAt;
+  String text;
+  String? rrule;
+  String? color;
+  DateTime? dueAt;
+  DateTime? doneAt;
   final DateTime createdAt;
   final bool isOwner;
-  final List<String> collaborators;
-  final List<Alert> alerts;
+  List<String> collaborators;
+  List<Alert> alerts;
 
-  const Task({
+  Task({
     required this.id,
     required this.text,
     this.rrule,

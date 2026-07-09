@@ -7,7 +7,7 @@ import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { noteDirPath, noteFilePath } from './utils.js';
-import { NoteFormData, CollaboratorInfo } from './models.js';
+import { NoteFormData } from './models.js';
 
 type Tx = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
 type Db = typeof db;
@@ -15,19 +15,12 @@ type UploadedFile = { id: string; name: string; type: string; size: number };
 
 export async function editOrCreateNote(
     userId: string,
-    noteId: string | null,
+    isEdit: boolean,
     noteData: NoteFormData
 ) {
-    const isEdit = typeof noteId === 'string' && noteId.length > 0;
-
-    if (!isEdit)
-        noteId = randomUUID();
-    else
-        noteId = noteId as string;
-
     // Upload files to disk before the transaction so we don't hold the DB
     // connection open during slow I/O. If the transaction later fails we clean up.
-    const { uploadedFiles } = await uploadFiles(noteId, noteData.files);
+    const { uploadedFiles } = await uploadFiles(noteData.noteId, noteData.files);
 
     const noteDbData = {
         text: noteData.text,
@@ -40,28 +33,28 @@ export async function editOrCreateNote(
         await db.transaction(async (tx) => {
 
             if (isEdit) {
-                const existing = await assertEditAccess(tx, noteId, userId);
+                const existing = await assertEditAccess(tx, noteData.noteId, userId);
 
                 const holdsLock = existing.editingBy === userId;
                 if (!holdsLock) throw new Error('Lock required');
 
-                await saveNoteBackup(tx, noteId, existing.text);
+                await saveNoteBackup(tx, noteData.noteId, existing.text);
 
                 await tx
                     .update(note)
                     .set({ ...noteDbData, editingBy: null, lockedUntil: null })
-                    .where(eq(note.id, noteId));
+                    .where(eq(note.id, noteData.noteId));
 
-                await tx.delete(collaborator).where(eq(collaborator.noteId, noteId));
+                await tx.delete(collaborator).where(eq(collaborator.noteId, noteData.noteId));
             } else {
                 await tx
                     .insert(note)
-                    .values({ id: noteId, ...noteDbData, owner: userId });
+                    .values({ id: noteData.noteId, ...noteDbData, owner: userId });
             }
 
             if (noteData.collaborators && noteData.collaborators.length > 0) {
                 await tx.insert(collaborator).values(
-                    noteData.collaborators.map((c) => ({ noteId, userId: c.userId, right: c.right })),
+                    noteData.collaborators.map((c) => ({ noteId: noteData.noteId, userId: c.userId, right: c.right })),
                 );
             }
 
@@ -75,13 +68,13 @@ export async function editOrCreateNote(
                         and(
                             eq(noteOrder.userId, userId),
                             gte(noteOrder.position, noteData.fixedPosition),
-                            ...(isEdit ? [sql`${noteOrder.noteId} != ${noteId}`] : []),
+                            ...(isEdit ? [sql`${noteOrder.noteId} != ${noteData.noteId}`] : []),
                         ),
                     );
 
                 await tx
                     .insert(noteOrder)
-                    .values({ userId, noteId, position: noteData.fixedPosition })
+                    .values({ userId, noteId: noteData.noteId, position: noteData.fixedPosition })
                     .onConflictDoUpdate({
                         target: [noteOrder.userId, noteOrder.noteId],
                         set: { position: noteData.fixedPosition },
@@ -89,14 +82,14 @@ export async function editOrCreateNote(
             } else {
                 await tx
                     .delete(noteOrder)
-                    .where(and(eq(noteOrder.userId, userId), eq(noteOrder.noteId, noteId)));
+                    .where(and(eq(noteOrder.userId, userId), eq(noteOrder.noteId, noteData.noteId)));
             }
 
             if (uploadedFiles.length > 0) {
                 await tx.insert(noteFiles).values(
                     uploadedFiles.map((f) => ({
                         id: f.id,
-                        noteId,
+                        noteId: noteData.noteId,
                         fileName: f.name,
                         fileType: f.type,
                         fileSize: f.size,
@@ -108,7 +101,7 @@ export async function editOrCreateNote(
         // Transaction failed — remove any files we already wrote to disk.
         if (uploadedFiles.length > 0) {
             await Promise.allSettled(
-                uploadedFiles.map((f) => rm(noteFilePath(noteId, f.id), { force: true })),
+                uploadedFiles.map((f) => rm(noteFilePath(noteData.noteId, f.id), { force: true })),
             );
         }
         throw e;

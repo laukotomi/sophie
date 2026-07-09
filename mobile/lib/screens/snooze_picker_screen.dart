@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:sophie/services/alert_notifications.dart';
+import 'package:sophie/services/storage.dart';
 
 class SnoozePickerScreen extends StatelessWidget {
   final int alarmId;
   final String taskId;
-  final String? body;
+  final String body;
 
   const SnoozePickerScreen({
     super.key,
     required this.alarmId,
     required this.taskId,
-    this.body,
+    required this.body,
   });
 
   static const _presets = [
@@ -22,8 +23,7 @@ class SnoozePickerScreen extends StatelessWidget {
 
   Future _snoozeFor(BuildContext context, Duration duration) async {
     final fireAt = DateTime.now().add(duration);
-    await AlertNotifications.setAlarmAt(alarmId, fireAt, taskId, body ?? '');
-    if (context.mounted) Navigator.of(context).pop();
+    await _setNewAlarm(context, fireAt);
   }
 
   Future _pickCustomTime(BuildContext context) async {
@@ -43,24 +43,57 @@ class SnoozePickerScreen extends StatelessWidget {
     if (!fireAt.isAfter(today)) {
       fireAt = fireAt.add(const Duration(days: 1));
     }
-    await AlertNotifications.setAlarmAt(alarmId, fireAt, taskId, body ?? '');
+    await _setNewAlarm(context, fireAt);
+  }
+
+  Future _setNewAlarm(BuildContext context, DateTime fireAt) async {
+    await AlertNotifications.setAlarmAt(alarmId, fireAt, taskId, body);
     if (context.mounted) Navigator.of(context).pop();
+  }
+
+  Future _cancel(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel snooze?'),
+        content: const Text('The alarm will not ring again.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep snooze'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Cancel snooze'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await Storage.removeSnoozePending(alarmId);
+    if (context.mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Snooze')),
+      appBar: AppBar(
+        title: const Text('Snooze'),
+        actions: [
+          TextButton(
+            onPressed: () => _cancel(context),
+            child: const Text('Cancel snooze'),
+          ),
+        ],
+      ),
       body: ListView(
         children: [
-          if (body != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
-                body!,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(body, style: Theme.of(context).textTheme.titleMedium),
+          ),
           const Divider(),
           ..._presets.map(
             (p) => ListTile(
