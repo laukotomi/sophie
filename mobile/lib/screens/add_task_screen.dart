@@ -152,6 +152,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     }
   }
 
+  void _addRelativeAlert(Duration timeBefore) {
+    setState(() => _alerts.add(Alert.relative(timeBefore)));
+  }
+
   Future _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
@@ -179,7 +183,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         event.alerts,
         event.text,
       );
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
@@ -237,6 +241,14 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     return '$date  $time';
   }
+
+  static const _alertPresets = [
+    (label: 'At due time', duration: Duration(seconds: 0)),
+    (label: '5 min before', duration: Duration(minutes: 5)),
+    (label: '15 min before', duration: Duration(minutes: 15)),
+    (label: '30 min before', duration: Duration(minutes: 30)),
+    (label: '1 h before', duration: Duration(hours: 1)),
+  ];
 
   String _formatAlert(Alert alert) {
     if (alert.timeBefore != null) {
@@ -322,11 +334,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
             children: [
               TextFormField(
                 controller: _textController,
-                autofocus: !_isEditing,
-                minLines: 3,
+                minLines: 2,
                 maxLines: null,
                 decoration: const InputDecoration(
-                  labelText: 'Task',
                   hintText: 'What needs to be done?',
                   border: OutlineInputBorder(),
                 ),
@@ -351,6 +361,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                         onPressed: () => setState(() {
                           _dueAt = null;
                           _rrule = '';
+                          _alerts.removeWhere((a) => a.timeBefore != null);
                         }),
                       )
                     : null,
@@ -388,7 +399,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   ),
                 );
               }),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final preset in _alertPresets)
+                    ActionChip(
+                      label: Text(preset.label),
+                      onPressed: _dueAt != null
+                          ? () => _addRelativeAlert(preset.duration)
+                          : null,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
               const Divider(),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   const Icon(Icons.people_outline, size: 20),
@@ -401,6 +426,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<AppUser>(
+                key: ValueKey(_collaborators.length),
                 decoration: const InputDecoration(
                   hintText: 'Add a collaborator…',
                   border: OutlineInputBorder(),
@@ -424,24 +450,22 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                   if (u != null) setState(() => _collaborators.add(u));
                 },
               ),
-              ..._collaborators.asMap().entries.map((e) {
-                final index = e.key;
-                final user = e.value;
+              ..._collaborators.map((u) {
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.person_outline),
-                  title: Text(user.name),
-                  subtitle: Text(user.email),
+                  title: Text(u.name),
+                  subtitle: Text(u.email),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline),
                     tooltip: 'Remove',
-                    onPressed: () =>
-                        setState(() => _collaborators.removeAt(index)),
+                    onPressed: () => setState(() => _collaborators.remove(u)),
                   ),
                 );
               }),
+              const SizedBox(height: 24),
               const Divider(),
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
               Opacity(
                 opacity: _dueAt != null ? 1.0 : 0.4,
                 child: AbsorbPointer(

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:sophie/events/app_logout_event.dart';
+import 'package:sophie/events/app_offline_data_change_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/events/note_deleted_event.dart';
 import 'package:sophie/events/note_file_deleted_event.dart';
@@ -203,6 +204,8 @@ class _NotesScreenState extends State<NotesScreen> {
         note.files.removeWhere((f) => f.id == event.fileId);
       }
     }
+
+    AppEventBus.instance.emit(AppOfflineDataChangeEvent());
   }
 
   @override

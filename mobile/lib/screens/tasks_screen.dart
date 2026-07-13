@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sophie/events/app_logout_event.dart';
+import 'package:sophie/events/app_offline_data_change_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/events/task_deleted_event.dart';
 import 'package:sophie/events/task_saved_event.dart';
@@ -10,6 +11,7 @@ import 'package:sophie/events/task_toggle_done_event.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/screens/add_task_screen.dart';
+import 'package:sophie/screens/alert_manager_screen.dart';
 import 'package:sophie/services/storage.dart';
 import 'package:sophie/services/task_events.dart';
 import 'package:sophie/widgets/task_card.dart';
@@ -19,7 +21,7 @@ class TasksScreen extends StatefulWidget {
   final List<Task> tasks;
   final bool usingCache;
 
-  const TasksScreen({super.key, required this.tasks, this.usingCache = false});
+  const TasksScreen({super.key, required this.tasks, required this.usingCache});
 
   @override
   State<TasksScreen> createState() => _TasksScreenState();
@@ -27,7 +29,6 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  late final StreamSubscription<void>? _snoozeQueueSub;
   late final StreamSubscription<TaskEvent>? _taskEventSub;
   late final AppEventSubscription? _appEventSub;
 
@@ -47,7 +48,6 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   void dispose() {
-    _snoozeQueueSub?.cancel();
     _taskEventSub?.cancel();
     _appEventSub?.cancel();
     super.dispose();
@@ -110,6 +110,8 @@ class _TasksScreenState extends State<TasksScreen> {
         task.doneAt = task.doneAt == null ? DateTime.now() : null;
       });
     }
+
+    AppEventBus.instance.emit(AppOfflineDataChangeEvent());
   }
 
   Set<DateTime> get _daysWithTasks => widget.tasks
@@ -147,6 +149,8 @@ class _TasksScreenState extends State<TasksScreen> {
                 firstDay: DateTime.utc(2000, 1, 1),
                 lastDay: DateTime.utc(2100, 12, 31),
                 focusedDay: _focusedDay,
+                calendarFormat: CalendarFormat.month,
+                availableCalendarFormats: const {CalendarFormat.month: 'Month'},
                 selectedDayPredicate: (day) =>
                     _selectedDay != null && isSameDay(day, _selectedDay!),
                 onDaySelected: (selectedDay, focusedDay) {
@@ -213,6 +217,18 @@ class _TasksScreenState extends State<TasksScreen> {
                 child: Icon(Icons.cloud_off, color: Colors.orange),
               ),
             ),
+          IconButton(
+            icon: Icon(Icons.notifications_outlined),
+            tooltip: 'Alert settings',
+            onPressed: () async {
+              await Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => AlertManagerScreen(tasks: widget.tasks),
+                ),
+              );
+              setState(() {});
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Log out',

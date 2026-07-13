@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:sophie/events/app_logout_event.dart';
+import 'package:sophie/events/app_menu_changed_event.dart';
+import 'package:sophie/events/app_offline_data_change_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/events/note_sync_event.dart';
 import 'package:sophie/events/task_sync_event.dart';
@@ -35,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int _selectedIndex = 0;
   late Future<DashboardData> _dataFuture;
+  DashboardData? _currentData;
   bool _usingCache = false;
   StreamSubscription? _navEventSub;
   AppEventSubscription? _appEventSub;
@@ -87,11 +90,14 @@ class _HomeScreenState extends State<HomeScreen> {
       case AppLogoutEvent():
         widget.onLoggedOut();
         break;
+      case AppOfflineDataChangeEvent():
+        Storage.saveDashboardData(_currentData!);
+        break;
       case AppSyncEvent():
         await AppEventBus.instance.emit(NoteSyncEvent());
         await AppEventBus.instance.emit(TaskSyncEvent());
-        setState(
-          () => _dataFuture = Future(() async {
+        setState(() {
+          _dataFuture = Future(() async {
             final data = await _loadData();
             final snooze = await Storage.popLastSnoozePending();
             if (snooze != null) {
@@ -106,8 +112,8 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             }
             return data;
-          }),
-        );
+          });
+        });
         break;
     }
   }
@@ -123,11 +129,13 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (mounted) setState(() => _usingCache = false);
+      _currentData = data;
       return data;
     } catch (error) {
       data = Storage.getDashboardData();
       if (data != null) {
         if (mounted) setState(() => _usingCache = true);
+        _currentData = data;
         return data;
       }
       rethrow;
@@ -195,8 +203,14 @@ class _HomeScreenState extends State<HomeScreen> {
             selectedIndex: _selectedIndex,
             height: 64,
             labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-            onDestinationSelected: (index) =>
-                setState(() => _selectedIndex = index),
+            onDestinationSelected: (index) => {
+              setState(() => _selectedIndex = index),
+              AppEventBus.instance.emit(
+                AppMenuChangedEvent(
+                  tab: index == 0 ? AppMenuTab.notes : AppMenuTab.tasks,
+                ),
+              ),
+            },
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.sticky_note_2_outlined),

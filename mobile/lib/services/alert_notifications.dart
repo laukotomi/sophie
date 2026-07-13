@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:alarm/alarm.dart';
+import 'package:alarm/utils/alarm_set.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -28,11 +29,16 @@ class AlertNotifications {
   static const _doneActionKey = 'MARK_DONE';
   static const _snoozeActionKey = 'SNOOZE';
 
+  /// Reserved alarm ID for the mute wakeup alarm.
+  /// 0x7FFFFFFE (max int31 − 1) is unreachable by [_notifId] for realistic UUIDs.
+  static const muteWakeupAlarmId = 0x7FFFFFFE;
+
   /// Initialises the alarm package.
   /// Safe to call from [main] before [runApp].
   static Future init() async {
     await _initAwesomeNotifications();
     await Alarm.init();
+    Alarm.ringing.listen(_onAlarmRing);
   }
 
   /// Requests the permissions required for alarms and notifications.
@@ -63,7 +69,9 @@ class AlertNotifications {
       if (fireAt == null || !fireAt.isAfter(now)) continue;
 
       final alarmId = _notifId(taskId, alertCount);
-      setAlarmAt(alarmId, fireAt, taskId, text);
+      final mutedUntil = Storage.mutedUntil;
+      final muted = mutedUntil != null && fireAt.isBefore(mutedUntil);
+      await setAlarmAt(alarmId, fireAt, taskId, text, muted: muted);
 
       alertCount++;
     }
@@ -77,32 +85,33 @@ class AlertNotifications {
     int alarmId,
     DateTime fireAt,
     String taskId,
-    String text,
-  ) async {
-    final alarmSettings = AlarmSettings(
-      id: alarmId,
-      dateTime: fireAt,
-      // payload: jsonEncode({'taskId': task.id}),
-      assetAudioPath: 'assets/task_alert.mp3',
-      loopAudio: true,
-      vibrate: true,
-      warningNotificationOnKill: Platform.isIOS,
-      androidFullScreenIntent: false,
-      volumeSettings: VolumeSettings.fade(
-        volume: 0.5,
-        fadeDuration: Duration(seconds: 5),
-        volumeEnforced: false,
-      ),
-      notificationSettings: NotificationSettings(
-        title: 'Sophie',
-        body: text,
-        stopButton: 'Stop the alarm',
-        icon: 'notification_icon',
-        iconColor: Color(0xff862778),
-      ),
-    );
-
-    await Alarm.set(alarmSettings: alarmSettings);
+    String text, {
+    bool muted = false,
+  }) async {
+    if (!muted) {
+      final alarmSettings = AlarmSettings(
+        id: alarmId,
+        dateTime: fireAt,
+        assetAudioPath: 'assets/task_alert.mp3',
+        loopAudio: true,
+        vibrate: true,
+        warningNotificationOnKill: Platform.isIOS,
+        androidFullScreenIntent: false,
+        volumeSettings: VolumeSettings.fade(
+          volume: 0.5,
+          fadeDuration: Duration(seconds: 5),
+          volumeEnforced: false,
+        ),
+        notificationSettings: NotificationSettings(
+          title: 'Sophie',
+          body: text,
+          stopButton: 'Stop the alarm',
+          icon: 'notification_icon',
+          iconColor: Color(0xff862778),
+        ),
+      );
+      await Alarm.set(alarmSettings: alarmSettings);
+    }
 
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
@@ -155,10 +164,71 @@ class AlertNotifications {
   static Future cancelByAlarmId(int alarmId) async {
     try {
       await Alarm.stop(alarmId);
-      await AwesomeNotifications().dismiss(alarmId);
     } catch (_) {
       // Ignore errors if the alarm was already stopped or dismissed.
     }
+
+    try {
+      await AwesomeNotifications().dismiss(alarmId);
+    } catch (_) {
+      // Ignore errors if the notification was already dismissed.
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  /// Mutes all alerts until [until]. Reschedules currently-audible alarms
+  /// silently and sets a wakeup alarm to auto-restore at [until].
+  static Future muteUntil(DateTime until, List<Task> tasks) async {
+    await Storage.setMutedUntil(until);
+    await _scheduleMuteWakeup(until);
+    await rescheduleAll(tasks);
+  }
+
+  /// Cancels the active mute and restores audible alarms for future alerts.
+  static Future cancelMute(List<Task> tasks) async {
+    await Storage.clearMutedUntil();
+    try {
+      await Alarm.stop(muteWakeupAlarmId);
+    } catch (_) {}
+    await rescheduleAll(tasks);
+  }
+
+  static Future _onAlarmRing(AlarmSet alarmSet) async {
+    if (alarmSet.alarms.any((alarm) => alarm.id == muteWakeupAlarmId)) {
+      try {
+        await Alarm.stop(muteWakeupAlarmId);
+      } catch (_) {}
+      await Storage.clearMutedUntil();
+      final data = Storage.getDashboardData();
+      if (data != null) await rescheduleAll(data.tasks);
+    }
+  }
+
+  static Future _scheduleMuteWakeup(DateTime until) async {
+    await Alarm.set(
+      alarmSettings: AlarmSettings(
+        id: muteWakeupAlarmId,
+        dateTime: until,
+        assetAudioPath: 'assets/task_alert.mp3',
+        loopAudio: false,
+        vibrate: false,
+        warningNotificationOnKill: false,
+        androidFullScreenIntent: false,
+        volumeSettings: VolumeSettings.fade(
+          volume: 0,
+          fadeDuration: Duration.zero,
+          volumeEnforced: true,
+        ),
+        notificationSettings: NotificationSettings(
+          title: '',
+          body: '',
+          icon: 'notification_icon',
+        ),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:sophie/events/app_menu_changed_event.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/note.dart';
 import 'package:sophie/screens/add_note_screen.dart';
+import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend_note.dart';
 import 'package:sophie/widgets/collapsible_body.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -26,12 +28,12 @@ class NoteCard extends StatefulWidget {
 class _NoteCardState extends State<NoteCard> {
   final _cardKey = GlobalKey();
   final _overlayController = OverlayPortalController();
+  late final AppEventSubscription _appEventSub;
   double _overlayTop = 0;
   double _overlayRight = 0;
   bool _acquiringLock = false;
   bool _collapsed = true;
   bool _overflows = false;
-  bool _tickerEnabled = true;
   final Set<String> _checkedItems = {};
 
   static const double _maxCollapsedHeight = 300;
@@ -40,44 +42,32 @@ class _NoteCardState extends State<NoteCard> {
   void initState() {
     super.initState();
     widget.scrollController.addListener(_onScroll);
+    _appEventSub = AppEventBus.instance.listen((event) async {
+      if (event is AppMenuChangedEvent && event.tab != AppMenuTab.notes) {
+        if (_overlayController.isShowing) _overlayController.hide();
+      }
+    });
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final active = TickerMode.valuesOf(context).enabled;
-    if (active == _tickerEnabled) return;
-    final wasActive = _tickerEnabled;
-    _tickerEnabled = active;
-    if (!active && _overlayController.isShowing) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _overlayController.isShowing) _overlayController.hide();
-      });
-    }
-    if (active && !wasActive) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _onScroll();
-      });
-    }
-  }
-
-  @override
-  void didUpdateWidget(NoteCard old) {
-    super.didUpdateWidget(old);
-    if (old.scrollController != widget.scrollController) {
-      old.scrollController.removeListener(_onScroll);
-      widget.scrollController.addListener(_onScroll);
-    }
-  }
+  // @override
+  // void didUpdateWidget(NoteCard old) {
+  //   super.didUpdateWidget(old);
+  //   if (old.scrollController != widget.scrollController) {
+  //     old.scrollController.removeListener(_onScroll);
+  //     widget.scrollController.addListener(_onScroll);
+  //   }
+  //   _onScroll();
+  // }
 
   @override
   void dispose() {
     widget.scrollController.removeListener(_onScroll);
+    _appEventSub.cancel();
     super.dispose();
   }
 
   void _onScroll() {
-    if (!mounted || !_tickerEnabled) {
+    if (!mounted) {
       if (_overlayController.isShowing) _overlayController.hide();
       return;
     }
@@ -97,13 +87,14 @@ class _NoteCardState extends State<NoteCard> {
 
     // Float when the edit button itself (16px padding + ~40px compact button = 56px
     // from card top) has scrolled behind the AppBar, but the card is still visible.
-    final shouldFloat = cardTop < viewTop && cardBottom > viewTop + 56 + 75;
+    final shouldFloat =
+        cardTop < viewTop && cardBottom > viewTop + kToolbarHeight + 75;
 
-    // debugPrint(
-    //   '[NoteCard] cardTop=$cardTop cardBottom=$cardBottom '
-    //   'viewTop=$viewTop buttonBottom=${cardTop + 56} '
-    //   'shouldFloat=$shouldFloat isShowing=${_overlayController.isShowing}',
-    // );
+    debugPrint(
+      '[NoteCard] cardTop=$cardTop cardBottom=$cardBottom '
+      'viewTop=$viewTop buttonBottom=${cardTop + 56} '
+      'shouldFloat=$shouldFloat isShowing=${_overlayController.isShowing}',
+    );
 
     if (shouldFloat && !_overlayController.isShowing) {
       _overlayTop = viewTop + 4;

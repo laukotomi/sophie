@@ -12,6 +12,7 @@ class Storage {
   static const String _dashboardCacheKey = 'cached_dashboard';
   static const String _alertCountsKey = 'alert_notif_counts';
   static const String _snoozePendingKey = 'snooze_pending';
+  static const String _mutedUntilKey = 'muted_until';
   static const String _offlineNoteEventsKey = 'offline_note_events';
   static const String _offlineTaskEventsKey = 'offline_task_events';
 
@@ -45,6 +46,7 @@ class Storage {
     await _prefs.remove(_dashboardCacheKey);
     await _prefs.remove(_alertCountsKey);
     await _prefs.remove(_snoozePendingKey);
+    await _prefs.remove(_mutedUntilKey);
     await _prefs.remove(_offlineNoteEventsKey);
     await _prefs.remove(_offlineTaskEventsKey);
   }
@@ -81,6 +83,30 @@ class Storage {
   static Future removeAlertCount(String taskId) async {
     final map = getAlertCountsMap()..remove(taskId);
     _saveAlertCountsMap(map);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Mute
+  // ---------------------------------------------------------------------------
+
+  /// Returns the muted-until time, or null if not muted / already expired.
+  static DateTime? get mutedUntil {
+    final s = _prefs.getString(_mutedUntilKey);
+    if (s == null) return null;
+    try {
+      final dt = DateTime.parse(s);
+      return dt.isAfter(DateTime.now()) ? dt : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future setMutedUntil(DateTime until) async {
+    await _prefs.setString(_mutedUntilKey, until.toIso8601String());
+  }
+
+  static Future clearMutedUntil() async {
+    await _prefs.remove(_mutedUntilKey);
   }
 
   // ---------------------------------------------------------------------------
