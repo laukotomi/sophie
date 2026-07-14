@@ -55,10 +55,10 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future _syncTaskChanges() async {}
 
-  void _handleTaskEvent(TaskEvent event) {
+  Future _handleTaskEvent(TaskEvent event) async {
     if (!widget.usingCache) return;
 
-    Storage.addTaskEvent(event);
+    await Storage.addTaskEvent(event);
 
     if (event is TaskDeletedEvent) {
       widget.tasks.removeWhere((t) => t.id == event.taskId);

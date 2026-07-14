@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sophie/models/dashboard_data.dart';
 import 'package:sophie/models/pending_snooze.dart';
+import 'package:sophie/models/scheduled_notification.dart';
 import 'package:sophie/services/note_events.dart';
 import 'package:sophie/services/task_events.dart';
 
@@ -10,7 +11,7 @@ class Storage {
   static const String _authTokenKey = 'auth_token';
   static const String _serverUrlKey = 'server_url';
   static const String _dashboardCacheKey = 'cached_dashboard';
-  static const String _alertCountsKey = 'alert_notif_counts';
+  static const String _taskAlertsMapKey = 'task_alerts_map';
   static const String _snoozePendingKey = 'snooze_pending';
   static const String _mutedUntilKey = 'muted_until';
   static const String _offlineNoteEventsKey = 'offline_note_events';
@@ -20,18 +21,6 @@ class Storage {
 
   static String? get authToken => _prefs.getString(_authTokenKey);
   static String? get serverUrl => _prefs.getString(_serverUrlKey);
-
-  static Map<String, int> getAlertCountsMap() {
-    final raw = _prefs.getString(_alertCountsKey);
-    final map = raw != null
-        ? Map<String, int>.from(jsonDecode(raw) as Map)
-        : <String, int>{};
-    return map;
-  }
-
-  static void _saveAlertCountsMap(Map<String, int> map) {
-    _prefs.setString(_alertCountsKey, jsonEncode(map));
-  }
 
   static Future init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -44,7 +33,7 @@ class Storage {
   static Future clear() async {
     await _prefs.remove(_authTokenKey);
     await _prefs.remove(_dashboardCacheKey);
-    await _prefs.remove(_alertCountsKey);
+    await _prefs.remove(_taskAlertsMapKey);
     await _prefs.remove(_snoozePendingKey);
     await _prefs.remove(_mutedUntilKey);
     await _prefs.remove(_offlineNoteEventsKey);
@@ -69,21 +58,86 @@ class Storage {
     await _prefs.setString(_serverUrlKey, url);
   }
 
-  static int getAlertCount(String taskId) {
-    final map = getAlertCountsMap();
-    return (map[taskId]) ?? 0;
+  static Map<String, List<ScheduledNotification>> getTaskAlertsMap() {
+    final raw = _prefs.getString(_taskAlertsMapKey);
+    final json = raw != null
+        ? jsonDecode(raw) as Map<String, dynamic>
+        : <String, dynamic>{};
+    final map = <String, List<ScheduledNotification>>{};
+    for (final entry in json.entries) {
+      final taskId = entry.key;
+      final list = (entry.value as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .map(ScheduledNotification.fromJson)
+          .toList();
+      map[taskId] = list;
+    }
+    return map;
   }
 
-  static Future setAlertCount(String taskId, int count) async {
-    final map = getAlertCountsMap();
-    map[taskId] = count;
-    _saveAlertCountsMap(map);
+  static Future clearTaskAlertsMap() async {
+    await _saveTaskAlertsMap({});
   }
 
-  static Future removeAlertCount(String taskId) async {
-    final map = getAlertCountsMap()..remove(taskId);
-    _saveAlertCountsMap(map);
+  static List<ScheduledNotification> getTaskAlerts(String taskId) {
+    final map = getTaskAlertsMap();
+    return map[taskId] ?? [];
   }
+
+  static Future setTaskAlerts(
+    String taskId,
+    List<ScheduledNotification> alerts,
+  ) async {
+    final map = getTaskAlertsMap();
+    map[taskId] = alerts;
+    await _saveTaskAlertsMap(map);
+  }
+
+  static Future setTaskAlert(String taskId, ScheduledNotification alert) async {
+    final map = getTaskAlertsMap();
+    final alerts = map[taskId] ?? [];
+    alerts.add(alert);
+    map[taskId] = alerts;
+    await _saveTaskAlertsMap(map);
+  }
+
+  static Future removeTaskAlerts(String taskId) async {
+    final map = getTaskAlertsMap()..remove(taskId);
+    await _saveTaskAlertsMap(map);
+  }
+
+  static Future removeTaskAlert(String taskId, int alarmId) async {
+    final map = getTaskAlertsMap();
+    final alerts = map[taskId];
+    if (alerts == null) return;
+    alerts.removeWhere((e) => e.id == alarmId);
+    if (alerts.isEmpty) {
+      map.remove(taskId);
+    }
+    await _saveTaskAlertsMap(map);
+  }
+
+  static Future _saveTaskAlertsMap(
+    Map<String, List<ScheduledNotification>> map,
+  ) async {
+    await _prefs.setString(_taskAlertsMapKey, jsonEncode(map));
+  }
+
+  // static int getAlertCount(String taskId) {
+  //   final map = getAlertCountsMap();
+  //   return (map[taskId]) ?? 0;
+  // }
+
+  // static Future setAlertCount(String taskId, int count) async {
+  //   final map = getAlertCountsMap();
+  //   map[taskId] = count;
+  //   _saveAlertCountsMap(map);
+  // }
+
+  // static Future removeAlertCount(String taskId) async {
+  //   final map = getAlertCountsMap()..remove(taskId);
+  //   _saveAlertCountsMap(map);
+  // }
 
   // ---------------------------------------------------------------------------
   // Mute
@@ -144,8 +198,7 @@ class Storage {
   }
 
   static Future removeSnoozePending(int alarmId) async {
-    final list = _getSnoozePendings()
-      ..removeWhere((e) => e.alarmId == alarmId);
+    final list = _getSnoozePendings()..removeWhere((e) => e.alarmId == alarmId);
     await _saveSnoozePendingList(list);
   }
 

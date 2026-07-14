@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:sophie/models/alert.dart';
+import 'package:sophie/models/scheduled_notification.dart';
+import 'package:sophie/screens/snooze_picker_screen.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/storage.dart';
 
 class AlertManagerScreen extends StatefulWidget {
-  final List<Task> tasks;
-
   const AlertManagerScreen({super.key, required this.tasks});
+
+  final List<Task> tasks;
 
   @override
   State<AlertManagerScreen> createState() => _AlertManagerScreenState();
@@ -16,7 +17,7 @@ class AlertManagerScreen extends StatefulWidget {
 
 class _AlertManagerScreenState extends State<AlertManagerScreen> {
   bool _loading = false;
-  late List<_AlertEntry> _alerts;
+  late List<ScheduledNotification> _alerts;
 
   @override
   void initState() {
@@ -24,33 +25,65 @@ class _AlertManagerScreenState extends State<AlertManagerScreen> {
     _alerts = _loadAlerts();
   }
 
-  List<_AlertEntry> _loadAlerts() {
-    final data = Storage.getDashboardData();
-    if (data == null) return [];
-    final now = DateTime.now();
-    final mutedUntil = Storage.mutedUntil;
-    final results = <_AlertEntry>[];
-    for (final task in data.tasks.where((t) => t.doneAt == null)) {
-      for (final alert in task.alerts) {
-        final fireAt = _resolveFireAt(alert, task.dueAt);
-        if (fireAt == null || !fireAt.isAfter(now)) continue;
-        results.add((
-          fireAt: fireAt,
-          taskText: task.text,
-          muted: mutedUntil != null && fireAt.isBefore(mutedUntil),
-        ));
-      }
+  List<ScheduledNotification> _loadAlerts() {
+    final taskAlertsMap = Storage.getTaskAlertsMap();
+    List<ScheduledNotification> alerts = [];
+    for (final taskId in taskAlertsMap.keys) {
+      final taskAlerts = taskAlertsMap[taskId]!;
+      alerts.addAll(taskAlerts);
     }
-    results.sort((a, b) => a.fireAt.compareTo(b.fireAt));
-    return results;
+    alerts.sort((a, b) => a.scheduledDateTime.compareTo(b.scheduledDateTime));
+    return alerts;
   }
 
-  static DateTime? _resolveFireAt(Alert alert, DateTime? dueAt) {
-    if (alert.alertAt != null) return alert.alertAt;
-    if (alert.timeBefore != null && dueAt != null) {
-      return dueAt.subtract(alert.timeBefore!);
+  Future _confirmCancelAlert(ScheduledNotification entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel alert?'),
+        content: Text(
+          'The alert for "${entry.body}" at '
+          '${DateFormat('MMM d, HH:mm').format(entry.scheduledDateTime)} '
+          'will be cancelled.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Cancel alert'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await AlertNotifications.cancelAlarm(entry);
+      if (mounted) {
+        setState(() {
+          _alerts = _loadAlerts();
+        });
+      }
     }
-    return null;
+  }
+
+  Future _openSnoozePicker(ScheduledNotification entry) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SnoozePickerScreen(
+          alarmId: entry.id,
+          taskId: entry.taskId,
+          body: entry.body,
+          relativeDateTime: entry.scheduledDateTime,
+        ),
+      ),
+    );
+    if (mounted) {
+      setState(() {
+        _alerts = _loadAlerts();
+      });
+    }
   }
 
   Future _mute() async {
@@ -170,23 +203,40 @@ class _AlertManagerScreenState extends State<AlertManagerScreen> {
               children: _alerts.map((entry) {
                 return ListTile(
                   leading: Icon(
-                    entry.muted ? Icons.notifications_paused : Icons.alarm,
+                    entry.muted ? Icons.volume_off : Icons.alarm,
                     color: entry.muted
                         ? theme.colorScheme.onSurfaceVariant
                         : null,
                   ),
-                  title: Text(entry.taskText),
+                  title: Text(entry.body),
                   subtitle: Text(
-                    DateFormat('MMM d, HH:mm').format(entry.fireAt),
+                    DateFormat('MMM d, HH:mm').format(entry.scheduledDateTime),
                   ),
-                  trailing: entry.muted
-                      ? Text(
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (entry.muted)
+                        Text(
                           'muted',
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
-                        )
-                      : null,
+                        ),
+                      IconButton(
+                        icon: const Icon(Icons.snooze_outlined),
+                        tooltip: 'Snooze alert',
+                        onPressed: () => _openSnoozePicker(entry),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.cancel_outlined,
+                          color: theme.colorScheme.error,
+                        ),
+                        tooltip: 'Cancel alert',
+                        onPressed: () => _confirmCancelAlert(entry),
+                      ),
+                    ],
+                  ),
                 );
               }).toList(),
             ),
@@ -195,5 +245,3 @@ class _AlertManagerScreenState extends State<AlertManagerScreen> {
     );
   }
 }
-
-typedef _AlertEntry = ({DateTime fireAt, String taskText, bool muted});

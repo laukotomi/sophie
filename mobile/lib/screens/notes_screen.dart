@@ -114,11 +114,11 @@ class _NotesScreenState extends State<NotesScreen> {
             await getIt<BackendNoteFile>().deleteFile(event);
           }
 
-          Storage.removeNoteEvent(event.eventId);
+          await Storage.removeNoteEvent(event.eventId);
         } on UnauthorizedException {
-          Storage.removeNoteEvent(event.eventId);
+          await Storage.removeNoteEvent(event.eventId);
         } on NotFoundException {
-          Storage.removeNoteEvent(event.eventId);
+          await Storage.removeNoteEvent(event.eventId);
         }
       }
     } catch (e) {
@@ -130,10 +130,10 @@ class _NotesScreenState extends State<NotesScreen> {
     }
   }
 
-  void _handleNoteEvent(NoteEvent event) {
+  Future _handleNoteEvent(NoteEvent event) async {
     if (!widget.usingCache) return;
 
-    Storage.addNoteEvent(event);
+    await Storage.addNoteEvent(event);
 
     if (event is NoteSavedEvent) {
       final users = getIt<UserService>().users;

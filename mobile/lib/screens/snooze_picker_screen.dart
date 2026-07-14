@@ -6,12 +6,14 @@ class SnoozePickerScreen extends StatelessWidget {
   final int alarmId;
   final String taskId;
   final String body;
+  final DateTime? relativeDateTime;
 
   const SnoozePickerScreen({
     super.key,
     required this.alarmId,
     required this.taskId,
     required this.body,
+    this.relativeDateTime,
   });
 
   static const _presets = [
@@ -22,32 +24,45 @@ class SnoozePickerScreen extends StatelessWidget {
   ];
 
   Future _snoozeFor(BuildContext context, Duration duration) async {
-    final fireAt = DateTime.now().add(duration);
+    final fireAt = (relativeDateTime ?? DateTime.now()).add(duration);
     await _setNewAlarm(context, fireAt);
   }
 
   Future _pickCustomTime(BuildContext context) async {
-    final now = TimeOfDay.now();
-    final picked = await showTimePicker(context: context, initialTime: now);
-    if (picked == null || !context.mounted) return;
-
-    final today = DateTime.now();
-    var fireAt = DateTime(
-      today.year,
-      today.month,
-      today.day,
-      picked.hour,
-      picked.minute,
+    final base = relativeDateTime ?? DateTime.now();
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: base,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
     );
-    // If the picked time is in the past today, schedule for tomorrow.
-    if (!fireAt.isAfter(today)) {
-      fireAt = fireAt.add(const Duration(days: 1));
+    if (pickedDate == null || !context.mounted) return;
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(base),
+    );
+    if (pickedTime == null || !context.mounted) return;
+
+    final fireAt = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+    if (!fireAt.isAfter(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please choose a future date and time.')),
+      );
+      return;
     }
+
     await _setNewAlarm(context, fireAt);
   }
 
   Future _setNewAlarm(BuildContext context, DateTime fireAt) async {
-    await AlertNotifications.setAlarmAt(alarmId, fireAt, taskId, body);
+    await AlertNotifications.rescheduleAlarm(alarmId, taskId, fireAt, body);
     if (context.mounted) Navigator.of(context).pop();
   }
 
@@ -82,10 +97,11 @@ class SnoozePickerScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Snooze'),
         actions: [
-          TextButton(
-            onPressed: () => _cancel(context),
-            child: const Text('Cancel snooze'),
-          ),
+          if (relativeDateTime == null)
+            TextButton(
+              onPressed: () => _cancel(context),
+              child: const Text('Cancel snooze'),
+            ),
         ],
       ),
       body: ListView(

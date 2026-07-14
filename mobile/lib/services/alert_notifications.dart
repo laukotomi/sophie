@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/alert.dart';
+import 'package:sophie/models/scheduled_notification.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend.dart';
@@ -61,27 +62,33 @@ class AlertNotifications {
   ) async {
     await cancelForTask(taskId);
 
-    int alertCount = 0;
+    List<ScheduledNotification> scheduled = [];
     final now = DateTime.now();
 
     for (final alert in alerts) {
       final fireAt = _resolveFireAt(alert, taskDueAt);
       if (fireAt == null || !fireAt.isAfter(now)) continue;
 
-      final alarmId = _notifId(taskId, alertCount);
+      final alarmId = _notifId(taskId, scheduled.length);
       final mutedUntil = Storage.mutedUntil;
       final muted = mutedUntil != null && fireAt.isBefore(mutedUntil);
-      await setAlarmAt(alarmId, fireAt, taskId, text, muted: muted);
+      final notification = await _setAlarmAt(
+        alarmId,
+        fireAt,
+        taskId,
+        text,
+        muted: muted,
+      );
 
-      alertCount++;
+      scheduled.add(notification);
     }
 
-    if (alertCount > 0) {
-      await Storage.setAlertCount(taskId, alertCount);
+    if (scheduled.isNotEmpty) {
+      await Storage.setTaskAlerts(taskId, scheduled);
     }
   }
 
-  static Future setAlarmAt(
+  static Future<ScheduledNotification> _setAlarmAt(
     int alarmId,
     DateTime fireAt,
     String taskId,
@@ -135,6 +142,26 @@ class AlertNotifications {
         NotificationActionButton(key: _snoozeActionKey, label: 'Snooze..'),
       ],
     );
+
+    return ScheduledNotification(
+      id: alarmId,
+      scheduledDateTime: fireAt,
+      body: text,
+      muted: muted,
+      taskId: taskId,
+    );
+  }
+
+  static Future rescheduleAlarm(
+    int alarmId,
+    String taskId,
+    DateTime fireAt,
+    String text,
+  ) async {
+    await _cancelByAlarmId(alarmId);
+    await Storage.removeTaskAlert(taskId, alarmId);
+    final notification = await _setAlarmAt(alarmId, fireAt, taskId, text);
+    await Storage.setTaskAlert(taskId, notification);
   }
 
   /// Cancels all existing alarms (derived from the old cached data) then
@@ -142,10 +169,14 @@ class AlertNotifications {
   static Future rescheduleAll(List<Task> freshTasks) async {
     // Cancel alarms for every previously tracked task, including ones that may
     // have been deleted from the server since the last launch.
-    final cachedData = Storage.getAlertCountsMap();
+    final cachedData = Storage.getTaskAlertsMap();
     for (final taskId in cachedData.keys) {
-      await cancelForTask(taskId);
+      final alerts = cachedData[taskId]!;
+      for (final alert in alerts) {
+        await _cancelByAlarmId(alert.id);
+      }
     }
+    await Storage.clearTaskAlertsMap();
     // Schedule fresh alarms for all pending tasks.
     for (final task in freshTasks.where((t) => t.doneAt == null)) {
       await scheduleAlerts(task.id, task.dueAt, task.alerts, task.text);
@@ -153,15 +184,19 @@ class AlertNotifications {
   }
 
   static Future cancelForTask(String taskId) async {
-    final count = Storage.getAlertCount(taskId);
-    for (var i = 0; i < count; i++) {
-      final alarmId = _notifId(taskId, i);
-      await cancelByAlarmId(alarmId);
+    final alerts = Storage.getTaskAlerts(taskId);
+    for (final alert in alerts) {
+      await _cancelByAlarmId(alert.id);
     }
-    await Storage.removeAlertCount(taskId);
+    await Storage.removeTaskAlerts(taskId);
   }
 
-  static Future cancelByAlarmId(int alarmId) async {
+  static Future cancelAlarm(ScheduledNotification alarm) async {
+    await _cancelByAlarmId(alarm.id);
+    await Storage.removeTaskAlert(alarm.taskId, alarm.id);
+  }
+
+  static Future _cancelByAlarmId(int alarmId) async {
     try {
       await Alarm.stop(alarmId);
     } catch (_) {
@@ -280,7 +315,7 @@ class AlertNotifications {
     final taskId = action.payload?['taskId'];
     if (alarmId == null || taskId == null || action.body == null) return;
 
-    await cancelByAlarmId(alarmId);
+    await _cancelByAlarmId(alarmId);
     if (action.buttonKeyPressed == _stopActionKey) {
       return;
     }

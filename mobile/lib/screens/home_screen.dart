@@ -91,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
         widget.onLoggedOut();
         break;
       case AppOfflineDataChangeEvent():
-        Storage.saveDashboardData(_currentData!);
+        await Storage.saveDashboardData(_currentData!);
         break;
       case AppSyncEvent():
         await AppEventBus.instance.emit(NoteSyncEvent());
