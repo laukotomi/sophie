@@ -3,15 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_offline_data_change_event.dart';
+import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/events/task_deleted_event.dart';
 import 'package:sophie/events/task_saved_event.dart';
 import 'package:sophie/events/task_sync_event.dart';
-import 'package:sophie/events/task_toggle_done_event.dart';
+import 'package:sophie/events/task_set_done_event.dart';
+import 'package:sophie/main.dart';
 import 'package:sophie/models/task.dart';
+import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/screens/add_task_screen.dart';
 import 'package:sophie/screens/alert_manager_screen.dart';
+import 'package:sophie/services/backend.dart';
+import 'package:sophie/services/backend_task.dart';
 import 'package:sophie/services/storage.dart';
 import 'package:sophie/services/task_events.dart';
 import 'package:sophie/widgets/task_card.dart';
@@ -29,8 +34,8 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  late final StreamSubscription<TaskEvent>? _taskEventSub;
-  late final AppEventSubscription? _appEventSub;
+  late final TaskEventSubscription _taskEventSub;
+  late final AppEventSubscription _appEventSub;
 
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -38,7 +43,7 @@ class _TasksScreenState extends State<TasksScreen> {
   @override
   void initState() {
     super.initState();
-    _taskEventSub = TaskEventBus.instance.stream.listen(_handleTaskEvent);
+    _taskEventSub = TaskEventBus.instance.listen(_handleTaskEvent);
     _appEventSub = AppEventBus.instance.listen((event) async {
       if (event is TaskSyncEvent) {
         await _syncTaskChanges();
@@ -48,16 +53,57 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   void dispose() {
-    _taskEventSub?.cancel();
-    _appEventSub?.cancel();
+    _taskEventSub.cancel();
+    _appEventSub.cancel();
     super.dispose();
   }
 
-  Future _syncTaskChanges() async {}
+  Future _syncTaskChanges() async {
+    try {
+      final events = await Storage.getOfflineTaskEvents();
+      if (events.isEmpty) return;
+
+      final taskClient = getIt<BackendTask>();
+
+      for (final event in events) {
+        try {
+          if (event is TaskDeletedEvent) {
+            await taskClient.deleteTask(event.taskId);
+          } else if (event is TaskSavedEvent) {
+            await taskClient.saveTask(event);
+          } else if (event is TaskSetDoneEvent) {
+            final next = await getIt<BackendTask>().setTaskDone(
+              event.task.id,
+              event.done,
+            );
+
+            if (next != null) {
+              // Schedule alerts for the newly spawned recurring task.
+              // Only relative (timeBefore) alerts transfer; absolute ones would be past-dated.
+              await AlertNotifications.scheduleAlerts(
+                next.nextTaskId,
+                next.nextDueAt,
+                event.task.alerts,
+                event.task.text,
+              );
+            }
+          }
+        } on UnauthorizedException {
+          await Storage.removeTaskEvent(event.eventId);
+        } on NotFoundException {
+          await Storage.removeTaskEvent(event.eventId);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error syncing task changes: $e')),
+        );
+      }
+    }
+  }
 
   Future _handleTaskEvent(TaskEvent event) async {
-    if (!widget.usingCache) return;
-
     await Storage.addTaskEvent(event);
 
     if (event is TaskDeletedEvent) {
@@ -104,14 +150,23 @@ class _TasksScreenState extends State<TasksScreen> {
         }
         return b.createdAt.compareTo(a.createdAt);
       });
-    } else if (event is TaskToggleDoneEvent) {
-      final task = widget.tasks.firstWhere((t) => t.id == event.taskId);
+    } else if (event is TaskSetDoneEvent) {
+      final task = widget.tasks.firstWhere((t) => t.id == event.task.id);
       setState(() {
-        task.doneAt = task.doneAt == null ? DateTime.now() : null;
+        task.doneAt = event.done ? DateTime.now() : null;
       });
     }
 
     AppEventBus.instance.emit(AppOfflineDataChangeEvent());
+    if (!widget.usingCache) {
+      try {
+        await _syncTaskChanges();
+      } catch (e) {
+        AppEventBus.instance.emit(
+          AppOfflineModeChangedEvent(offlineMode: true),
+        );
+      }
+    }
   }
 
   Set<DateTime> get _daysWithTasks => widget.tasks

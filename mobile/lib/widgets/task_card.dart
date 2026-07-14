@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:sophie/main.dart';
+import 'package:sophie/events/task_set_done_event.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/screens/add_task_screen.dart';
 import 'package:sophie/services/alert_notifications.dart';
-import 'package:sophie/services/backend_task.dart';
+import 'package:sophie/services/task_events.dart';
 import 'package:sophie/utils/note_colors.dart';
 import 'package:sophie/widgets/note_chip.dart';
 
@@ -24,22 +24,11 @@ class _TaskCardState extends State<TaskCard> {
     setState(() => _loading = true);
     final markingDone = widget.task.doneAt == null;
     try {
-      final next = await getIt<BackendTask>().setTaskDone(
-        taskId: widget.task.id,
-        done: markingDone,
+      await TaskEventBus.instance.emit(
+        TaskSetDoneEvent(task: widget.task, done: markingDone),
       );
       if (markingDone) {
         await AlertNotifications.cancelForTask(widget.task.id);
-      }
-      if (next != null) {
-        // Schedule alerts for the newly spawned recurring task.
-        // Only relative (timeBefore) alerts transfer; absolute ones would be past-dated.
-        await AlertNotifications.scheduleAlerts(
-          next.nextTaskId,
-          next.nextDueAt,
-          widget.task.alerts,
-          widget.task.text,
-        );
       }
     } catch (e) {
       if (mounted) {

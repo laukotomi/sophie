@@ -10,7 +10,6 @@ import 'package:sophie/models/note.dart';
 import 'package:sophie/models/note_file.dart';
 import 'package:sophie/models/note_history_entry.dart';
 import 'package:sophie/services/backend_note.dart';
-import 'package:sophie/services/backend_note_file.dart';
 import 'package:sophie/services/note_events.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/add_collaborator_screen.dart';
@@ -117,11 +116,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     try {
       if (file.id != null) {
         final event = NoteFileDeletedEvent(fileId: file.id!);
-        if (widget.offlineMode) {
-          NoteEventBus.instance.emit(event);
-        } else {
-          await getIt<BackendNoteFile>().deleteFile(event);
-        }
+        await NoteEventBus.instance.emit(event);
       }
       if (mounted) setState(() => _existingFiles.remove(file));
     } catch (_) {
@@ -265,11 +260,9 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     if (confirmed != true || !mounted) return;
     setState(() => _deleting = true);
     try {
-      if (widget.offlineMode) {
-        NoteEventBus.instance.emit(NoteDeletedEvent(widget.existingNote!.id));
-      } else {
-        await getIt<BackendNote>().deleteNote(widget.existingNote!.id);
-      }
+      await NoteEventBus.instance.emit(
+        NoteDeletedEvent(widget.existingNote!.id),
+      );
       if (mounted) Navigator.of(context).pop();
     } on UnauthorizedException {
       // handled by onUnauthorized
@@ -313,11 +306,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
         text: _textController.text.trim(),
         todoList: _todoList,
       );
-      if (widget.offlineMode || _lockError) {
-        NoteEventBus.instance.emit(event);
-      } else {
-        await getIt<BackendNote>().saveNote(event);
-      }
+      await NoteEventBus.instance.emit(event);
 
       if (mounted) {
         Navigator.of(context).pop();

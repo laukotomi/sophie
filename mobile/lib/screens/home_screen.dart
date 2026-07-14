@@ -7,6 +7,7 @@ import 'package:home_widget/home_widget.dart';
 import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_menu_changed_event.dart';
 import 'package:sophie/events/app_offline_data_change_event.dart';
+import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/events/note_sync_event.dart';
 import 'package:sophie/events/task_sync_event.dart';
@@ -92,6 +93,9 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case AppOfflineDataChangeEvent():
         await Storage.saveDashboardData(_currentData!);
+        break;
+      case AppOfflineModeChangedEvent():
+        setState(() => _usingCache = event.offlineMode);
         break;
       case AppSyncEvent():
         await AppEventBus.instance.emit(NoteSyncEvent());

@@ -348,7 +348,7 @@ class AlertNotifications {
 
     final client = BackendClient(baseUrl: serverUrl, token: token);
 
-    await client.task.setTaskDone(taskId: taskId, done: true);
+    await client.task.setTaskDone(taskId, true);
     await cancelForTask(taskId);
     AppEventBus.instance.emit(AppSyncEvent());
   }

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:sophie/events/task_deleted_event.dart';
 import 'package:sophie/events/task_saved_event.dart';
-import 'package:sophie/events/task_toggle_done_event.dart';
+import 'package:sophie/events/task_set_done_event.dart';
 
 abstract class TaskEvent {
   DateTime createdAt = DateTime.now();
@@ -19,7 +19,7 @@ abstract class TaskEvent {
     final event = switch (json['type'] as String) {
       'task_deleted' => TaskDeletedEvent.fromJson(json),
       'task_saved' => TaskSavedEvent.fromJson(json),
-      'task_toggle_done' => TaskToggleDoneEvent.fromJson(json),
+      'task_set_done' => TaskSetDoneEvent.fromJson(json),
       _ => throw ArgumentError('Unknown event type: ${json['type']}'),
     };
 
@@ -34,7 +34,23 @@ class TaskEventBus {
   static final TaskEventBus instance = TaskEventBus._();
   TaskEventBus._();
 
-  final _controller = StreamController<TaskEvent>.broadcast();
-  Stream<TaskEvent> get stream => _controller.stream;
-  void emit(TaskEvent event) => _controller.add(event);
+  final _handlers = <Future Function(TaskEvent)>[];
+
+  TaskEventSubscription listen(Future Function(TaskEvent) handler) {
+    _handlers.add(handler);
+    return TaskEventSubscription._(_handlers, handler);
+  }
+
+  Future emit(TaskEvent event) async {
+    await Future.wait(_handlers.map((h) => h(event)));
+  }
+}
+
+class TaskEventSubscription {
+  final List<Future Function(TaskEvent)> _handlers;
+  final Future Function(TaskEvent) _handler;
+
+  TaskEventSubscription._(this._handlers, this._handler);
+
+  void cancel() => _handlers.remove(_handler);
 }

@@ -171,11 +171,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         rrule: _rrule.isNotEmpty ? _rrule : null,
       );
 
-      if (widget.offlineMode) {
-        TaskEventBus.instance.emit(event);
-      } else {
-        await getIt<BackendTask>().saveTask(event);
-      }
+      await TaskEventBus.instance.emit(event);
 
       await AlertNotifications.scheduleAlerts(
         event.taskId,
@@ -215,13 +211,9 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     if (confirmed != true || !mounted) return;
     setState(() => _deleting = true);
     try {
-      if (widget.offlineMode) {
-        TaskEventBus.instance.emit(
-          TaskDeletedEvent(taskId: widget.existingTask!.id),
-        );
-      } else {
-        await getIt<BackendTask>().deleteTask(taskId: widget.existingTask!.id);
-      }
+      TaskEventBus.instance.emit(
+        TaskDeletedEvent(taskId: widget.existingTask!.id),
+      );
       await AlertNotifications.cancelForTask(widget.existingTask!.id);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {

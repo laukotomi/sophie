@@ -17,10 +17,10 @@ class BackendTask {
     required this.timeout,
   });
 
-  Future<({String nextTaskId, DateTime nextDueAt})?> setTaskDone({
-    required String taskId,
-    required bool done,
-  }) async {
+  Future<({String nextTaskId, DateTime nextDueAt})?> setTaskDone(
+    String taskId,
+    bool done,
+  ) async {
     final response = await http
         .patch(
           Uri.parse('$baseUrl/api/tasks'),
@@ -43,7 +43,7 @@ class BackendTask {
     return null;
   }
 
-  Future deleteTask({required String taskId}) async {
+  Future deleteTask(String taskId) async {
     final response = await http
         .delete(
           Uri.parse('$baseUrl/api/tasks'),

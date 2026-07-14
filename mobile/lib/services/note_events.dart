@@ -34,7 +34,23 @@ class NoteEventBus {
   static final NoteEventBus instance = NoteEventBus._();
   NoteEventBus._();
 
-  final _controller = StreamController<NoteEvent>.broadcast();
-  Stream<NoteEvent> get stream => _controller.stream;
-  void emit(NoteEvent event) => _controller.add(event);
+  final _handlers = <Future Function(NoteEvent)>[];
+
+  NoteEventSubscription listen(Future Function(NoteEvent) handler) {
+    _handlers.add(handler);
+    return NoteEventSubscription._(_handlers, handler);
+  }
+
+  Future emit(NoteEvent event) async {
+    await Future.wait(_handlers.map((h) => h(event)));
+  }
+}
+
+class NoteEventSubscription {
+  final List<Future Function(NoteEvent)> _handlers;
+  final Future Function(NoteEvent) _handler;
+
+  NoteEventSubscription._(this._handlers, this._handler);
+
+  void cancel() => _handlers.remove(_handler);
 }

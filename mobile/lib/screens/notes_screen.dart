@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_offline_data_change_event.dart';
+import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/events/note_deleted_event.dart';
 import 'package:sophie/events/note_file_deleted_event.dart';
@@ -35,8 +36,8 @@ class NotesScreen extends StatefulWidget {
 class _NotesScreenState extends State<NotesScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
-  late final StreamSubscription<NoteEvent>? _noteEventSub;
-  late final AppEventSubscription? _appEventSub;
+  late final NoteEventSubscription _noteEventSub;
+  late final AppEventSubscription _appEventSub;
 
   String? _selectedTag;
 
@@ -57,7 +58,7 @@ class _NotesScreenState extends State<NotesScreen> {
   @override
   void initState() {
     super.initState();
-    _noteEventSub = NoteEventBus.instance.stream.listen(_handleNoteEvent);
+    _noteEventSub = NoteEventBus.instance.listen(_handleNoteEvent);
     _appEventSub = AppEventBus.instance.listen((event) async {
       if (event is NoteSyncEvent) {
         await _syncNoteChanges();
@@ -68,8 +69,8 @@ class _NotesScreenState extends State<NotesScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
-    _noteEventSub?.cancel();
-    _appEventSub?.cancel();
+    _noteEventSub.cancel();
+    _appEventSub.cancel();
     super.dispose();
   }
 
@@ -131,8 +132,6 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   Future _handleNoteEvent(NoteEvent event) async {
-    if (!widget.usingCache) return;
-
     await Storage.addNoteEvent(event);
 
     if (event is NoteSavedEvent) {
@@ -206,6 +205,15 @@ class _NotesScreenState extends State<NotesScreen> {
     }
 
     AppEventBus.instance.emit(AppOfflineDataChangeEvent());
+    if (!widget.usingCache) {
+      try {
+        await _syncNoteChanges();
+      } catch (e) {
+        AppEventBus.instance.emit(
+          AppOfflineModeChangedEvent(offlineMode: true),
+        );
+      }
+    }
   }
 
   @override
