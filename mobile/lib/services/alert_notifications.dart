@@ -130,6 +130,7 @@ class AlertNotifications {
         autoDismissible: false,
         wakeUpScreen: true,
         locked: true,
+        actionType: ActionType.DisabledAction,
       ),
       schedule: NotificationCalendar.fromDate(
         date: fireAt.add(Duration(seconds: 1)),
@@ -301,36 +302,12 @@ class AlertNotifications {
         importance: NotificationImportance.Max,
         playSound: false,
         enableVibration: false,
+        locked: true,
       ),
     ]);
 
     AwesomeNotifications().setListeners(
       onActionReceivedMethod: _onNotificationAction,
-      onDismissActionReceivedMethod: _onNotificationDismissed,
-    );
-  }
-
-  @pragma('vm:entry-point')
-  static Future _onNotificationDismissed(ReceivedAction action) async {
-    final notifId = action.id;
-    if (notifId == null) return;
-
-    await AwesomeNotifications().createNotification(
-      content: NotificationContent(
-        id: notifId,
-        channelKey: _actionsChannelKey,
-        title: action.title ?? 'Sophie',
-        body: action.body,
-        payload: action.payload,
-        autoDismissible: false,
-        wakeUpScreen: true,
-        locked: true,
-      ),
-      actionButtons: [
-        NotificationActionButton(key: _stopActionKey, label: 'Stop'),
-        NotificationActionButton(key: _doneActionKey, label: 'Mark done'),
-        NotificationActionButton(key: _snoozeActionKey, label: 'Snooze..'),
-      ],
     );
   }
 
