@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:sophie/events/note_file_deleted_event.dart';
 
 class BackendNoteFile {
   static const _uploadTimeout = Duration(seconds: 60);
@@ -8,7 +7,7 @@ class BackendNoteFile {
   final Duration timeout;
   final String baseUrl;
   final Map<String, String> Function(bool json) getHeaders;
-  final Function(int statusCode) checkUnauthorized;
+  final Future Function(int statusCode) checkUnauthorized;
 
   BackendNoteFile({
     required this.baseUrl,
@@ -25,7 +24,7 @@ class BackendNoteFile {
 
     final streamed = await request.send().timeout(_uploadTimeout);
 
-    checkUnauthorized(streamed.statusCode);
+    await checkUnauthorized(streamed.statusCode);
     if (streamed.statusCode == 403) throw Exception('Forbidden');
     if (streamed.statusCode == 404) throw Exception('File not found');
     if (streamed.statusCode != 200) {
@@ -40,17 +39,17 @@ class BackendNoteFile {
     }
   }
 
-  Future deleteFile(NoteFileDeletedEvent event) async {
+  Future deleteFile(String fileId) async {
     final response = await http
         .delete(
           Uri.parse(
-            '$baseUrl/api/files?id=${Uri.encodeQueryComponent(event.fileId)}',
+            '$baseUrl/api/files?id=${Uri.encodeQueryComponent(fileId)}',
           ),
           headers: getHeaders(false),
         )
         .timeout(timeout);
 
-    checkUnauthorized(response.statusCode);
+    await checkUnauthorized(response.statusCode);
     if (response.statusCode == 403) throw Exception('Forbidden');
     if (response.statusCode == 404) throw Exception('File not found');
     if (response.statusCode != 204) {

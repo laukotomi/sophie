@@ -14,7 +14,7 @@ class BackendNote {
   final Duration timeout;
   final String baseUrl;
   final Map<String, String> Function(bool json) getHeaders;
-  final Function(int statusCode) checkUnauthorized;
+  final Future Function(int statusCode) checkUnauthorized;
 
   BackendNote({
     required this.baseUrl,
@@ -32,7 +32,7 @@ class BackendNote {
     String? color,
     bool dontFold = false,
     bool todoList = false,
-    required List<({String path, String name})> files,
+    required List<({String id, String path, String name})> files,
   }) async {
     final request =
         http.MultipartRequest(method, Uri.parse('$baseUrl/api/notes'))
@@ -55,6 +55,7 @@ class BackendNote {
     request.fields['dontFold'] = dontFold.toString();
     request.fields['todoList'] = todoList.toString();
     for (final file in files) {
+      request.fields['fileIds'] = file.id;
       request.files.add(
         await http.MultipartFile.fromPath(
           'files',
@@ -77,17 +78,17 @@ class BackendNote {
       color: event.color,
       dontFold: event.dontFold,
       todoList: event.todoList,
-      files: event.files,
+      files: event.newFiles,
     );
 
     final response = await http.Response.fromStream(
       await request.send().timeout(timeout),
     );
 
-    checkUnauthorized(response.statusCode);
+    await checkUnauthorized(response.statusCode);
     if (response.statusCode == 403) throw UnauthorizedException();
     if (response.statusCode == 404) throw NotFoundException();
-    if (response.statusCode != 204) {
+    if (response.statusCode != (event.isNew ? 201 : 204)) {
       throw Exception('Failed to save note: ${response.statusCode}');
     }
   }
@@ -104,7 +105,7 @@ class BackendNote {
         )
         .timeout(timeout);
 
-    checkUnauthorized(response.statusCode);
+    await checkUnauthorized(response.statusCode);
     if (response.statusCode == 423) throw NoteLockedException();
     if (response.statusCode == 403) throw UnauthorizedException();
     if (response.statusCode == 404) throw NotFoundException();
@@ -135,7 +136,7 @@ class BackendNote {
         )
         .timeout(timeout);
 
-    checkUnauthorized(response.statusCode);
+    await checkUnauthorized(response.statusCode);
     if (response.statusCode == 409) throw Exception('Lock not held');
     if (response.statusCode != 204) {
       throw Exception('Failed to refresh note lock: ${response.statusCode}');
@@ -151,7 +152,7 @@ class BackendNote {
         )
         .timeout(timeout);
 
-    checkUnauthorized(response.statusCode);
+    await checkUnauthorized(response.statusCode);
     if (response.statusCode == 403) throw UnauthorizedException();
     if (response.statusCode == 404) throw NotFoundException();
     if (response.statusCode != 204) {
@@ -169,7 +170,7 @@ class BackendNote {
         )
         .timeout(timeout);
 
-    checkUnauthorized(response.statusCode);
+    await checkUnauthorized(response.statusCode);
     if (response.statusCode == 403) throw UnauthorizedException();
     if (response.statusCode == 404) throw NotFoundException();
     if (response.statusCode != 200) {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:sophie/events/note_deleted_event.dart';
 import 'package:sophie/events/note_file_deleted_event.dart';
 import 'package:sophie/events/note_saved_event.dart';
+import 'package:sophie/models/note.dart';
 
 abstract class NoteEvent {
   DateTime createdAt = DateTime.now();
@@ -14,6 +15,9 @@ abstract class NoteEvent {
     'createdAt': createdAt.toIso8601String(),
     'type': type,
   };
+
+  Future apply(List<Note> notes, Function setState);
+  Future sync(List<Note> notes, Function setState);
 
   static NoteEvent fromJson(Map<String, dynamic> json) {
     final event = switch (json['type'] as String) {

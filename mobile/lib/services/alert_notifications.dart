@@ -350,6 +350,6 @@ class AlertNotifications {
 
     await client.task.setTaskDone(taskId, true);
     await cancelForTask(taskId);
-    AppEventBus.instance.emit(AppSyncEvent());
+    await AppEventBus.instance.emit(AppSyncEvent());
   }
 }

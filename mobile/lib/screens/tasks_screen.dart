@@ -5,18 +5,12 @@ import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_offline_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
-import 'package:sophie/events/task_deleted_event.dart';
-import 'package:sophie/events/task_saved_event.dart';
 import 'package:sophie/events/task_sync_event.dart';
-import 'package:sophie/events/task_set_done_event.dart';
-import 'package:sophie/main.dart';
 import 'package:sophie/models/task.dart';
-import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/screens/add_task_screen.dart';
 import 'package:sophie/screens/alert_manager_screen.dart';
 import 'package:sophie/services/backend.dart';
-import 'package:sophie/services/backend_task.dart';
 import 'package:sophie/services/storage.dart';
 import 'package:sophie/services/task_events.dart';
 import 'package:sophie/widgets/task_card.dart';
@@ -58,36 +52,19 @@ class _TasksScreenState extends State<TasksScreen> {
     super.dispose();
   }
 
+  void _safeSetState(VoidCallback fn) {
+    if (mounted) setState(fn);
+  }
+
   Future _syncTaskChanges() async {
     try {
       final events = await Storage.getOfflineTaskEvents();
       if (events.isEmpty) return;
 
-      final taskClient = getIt<BackendTask>();
-
       for (final event in events) {
         try {
-          if (event is TaskDeletedEvent) {
-            await taskClient.deleteTask(event.taskId);
-          } else if (event is TaskSavedEvent) {
-            await taskClient.saveTask(event);
-          } else if (event is TaskSetDoneEvent) {
-            final next = await getIt<BackendTask>().setTaskDone(
-              event.task.id,
-              event.done,
-            );
-
-            if (next != null) {
-              // Schedule alerts for the newly spawned recurring task.
-              // Only relative (timeBefore) alerts transfer; absolute ones would be past-dated.
-              await AlertNotifications.scheduleAlerts(
-                next.nextTaskId,
-                next.nextDueAt,
-                event.task.alerts,
-                event.task.text,
-              );
-            }
-          }
+          await event.sync(widget.tasks, _safeSetState);
+          await Storage.removeTaskEvent(event.eventId);
         } on UnauthorizedException {
           await Storage.removeTaskEvent(event.eventId);
         } on NotFoundException {
@@ -105,64 +82,14 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future _handleTaskEvent(TaskEvent event) async {
     await Storage.addTaskEvent(event);
+    await event.apply(widget.tasks, _safeSetState);
 
-    if (event is TaskDeletedEvent) {
-      widget.tasks.removeWhere((t) => t.id == event.taskId);
-    } else if (event is TaskSavedEvent) {
-      if (!event.isNew) {
-        final task = widget.tasks.firstWhere((t) => t.id == event.taskId);
-        setState(() {
-          task
-            ..alerts = event.alerts
-            ..collaborators = event.collaboratorIds
-            ..color = event.color
-            ..dueAt = event.dueAt
-            ..rrule = event.rrule
-            ..text = event.text;
-        });
-      } else {
-        setState(() {
-          widget.tasks.add(
-            Task(
-              id: event.taskId,
-              text: event.text,
-              rrule: event.rrule,
-              color: event.color,
-              dueAt: event.dueAt,
-              doneAt: null,
-              createdAt: DateTime.now(),
-              isOwner: true,
-              collaborators: event.collaboratorIds,
-              alerts: event.alerts,
-            ),
-          );
-        });
-      }
-
-      widget.tasks.sort((a, b) {
-        if (a.doneAt != null && b.doneAt == null) return 1;
-        if (a.doneAt == null && b.doneAt != null) return -1;
-        if (a.dueAt == null && b.dueAt != null) return -1;
-        if (a.dueAt != null && b.dueAt == null) return 1;
-        if (a.dueAt != null && b.dueAt != null) {
-          final dueDiff = a.dueAt!.compareTo(b.dueAt!);
-          if (dueDiff != 0) return dueDiff;
-        }
-        return b.createdAt.compareTo(a.createdAt);
-      });
-    } else if (event is TaskSetDoneEvent) {
-      final task = widget.tasks.firstWhere((t) => t.id == event.task.id);
-      setState(() {
-        task.doneAt = event.done ? DateTime.now() : null;
-      });
-    }
-
-    AppEventBus.instance.emit(AppOfflineDataChangeEvent());
+    await AppEventBus.instance.emit(AppOfflineDataChangeEvent());
     if (!widget.usingCache) {
       try {
         await _syncTaskChanges();
       } catch (e) {
-        AppEventBus.instance.emit(
+        await AppEventBus.instance.emit(
           AppOfflineModeChangedEvent(offlineMode: true),
         );
       }
@@ -306,7 +233,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 ),
               );
               if (confirmed == true) {
-                AppEventBus.instance.emit(AppLogoutEvent());
+                await AppEventBus.instance.emit(AppLogoutEvent());
               }
             },
           ),
@@ -326,7 +253,7 @@ class _TasksScreenState extends State<TasksScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          AppEventBus.instance.emit(AppSyncEvent());
+          await AppEventBus.instance.emit(AppSyncEvent());
         },
         child: filteredTasks.isEmpty
             ? ListView(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:sophie/events/task_deleted_event.dart';
 import 'package:sophie/events/task_saved_event.dart';
 import 'package:sophie/events/task_set_done_event.dart';
+import 'package:sophie/models/task.dart';
 
 abstract class TaskEvent {
   DateTime createdAt = DateTime.now();
@@ -14,6 +15,9 @@ abstract class TaskEvent {
     'createdAt': createdAt.toIso8601String(),
     'type': type,
   };
+
+  Future apply(List<Task> tasks, Function setState);
+  Future sync(List<Task> tasks, Function setState);
 
   static TaskEvent fromJson(Map<String, dynamic> json) {
     final event = switch (json['type'] as String) {

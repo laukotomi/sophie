@@ -5,22 +5,13 @@ import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_offline_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
-import 'package:sophie/events/note_deleted_event.dart';
-import 'package:sophie/events/note_file_deleted_event.dart';
-import 'package:sophie/events/note_saved_event.dart';
 import 'package:sophie/events/note_sync_event.dart';
-import 'package:sophie/main.dart';
 import 'package:sophie/models/note.dart';
-import 'package:sophie/models/note_collaborator.dart';
-import 'package:sophie/models/note_file.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend.dart';
-import 'package:sophie/services/backend_note.dart';
-import 'package:sophie/services/backend_note_file.dart';
 import 'package:sophie/services/note_events.dart';
 import 'package:sophie/screens/add_note_screen.dart';
 import 'package:sophie/services/storage.dart';
-import 'package:sophie/services/user_service.dart';
 import 'package:sophie/widgets/note_card.dart';
 
 class NotesScreen extends StatefulWidget {
@@ -79,42 +70,9 @@ class _NotesScreenState extends State<NotesScreen> {
       final events = await Storage.getOfflineNoteEvents();
       if (events.isEmpty) return;
 
-      final noteClient = getIt<BackendNote>();
-
       for (final event in events) {
         try {
-          if (event is NoteDeletedEvent) {
-            await noteClient.deleteNote(event.noteId);
-          } else if (event is NoteSavedEvent) {
-            bool hadConflict = false;
-            if (!event.isNew) {
-              final result = await noteClient.acquireNoteLock(event.noteId);
-              hadConflict = event.createdAt.isBefore(result.updatedAt);
-            }
-            await noteClient.saveNote(event);
-            if (!event.isNew) {
-              await noteClient.releaseNoteLock(event.noteId);
-            }
-
-            if (hadConflict) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'An offline edit conflicted with a newer version. '
-                        'The most recent was kept. Check note history if you need to recover yours.',
-                      ),
-                      duration: Duration(seconds: 10),
-                    ),
-                  );
-                }
-              });
-            }
-          } else if (event is NoteFileDeletedEvent) {
-            await getIt<BackendNoteFile>().deleteFile(event);
-          }
-
+          await event.sync(widget.notes, _safeSetState);
           await Storage.removeNoteEvent(event.eventId);
         } on UnauthorizedException {
           await Storage.removeNoteEvent(event.eventId);
@@ -131,85 +89,20 @@ class _NotesScreenState extends State<NotesScreen> {
     }
   }
 
+  void _safeSetState(VoidCallback fn) {
+    if (mounted) setState(fn);
+  }
+
   Future _handleNoteEvent(NoteEvent event) async {
     await Storage.addNoteEvent(event);
+    await event.apply(widget.notes, _safeSetState);
 
-    if (event is NoteSavedEvent) {
-      final users = getIt<UserService>().users;
-      final collabs = event.collaborators.map((c) {
-        final user = users.firstWhere((u) => u.id == c.userId);
-        return NoteCollaborator(
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          right: c.right,
-        );
-      }).toList();
-
-      final newFiles = event.files
-          .map((f) => NoteFile(fileName: f.name))
-          .toList();
-
-      if (!event.isNew) {
-        final note = widget.notes.firstWhere((n) => n.id == event.noteId);
-        setState(() {
-          note
-            ..updatedAt = DateTime.now()
-            ..position = event.fixedPosition
-            ..text = event.text
-            ..color = event.color
-            ..dontFold = event.dontFold
-            ..todoList = event.todoList
-            ..collaborators = collabs
-            ..files.addAll(newFiles);
-        });
-      } else {
-        final ownerId = getIt<UserService>().currentUserId;
-        setState(() {
-          widget.notes.add(
-            Note(
-              collaborators: collabs,
-              createdAt: DateTime.now(),
-              id: event.noteId,
-              isOwner: true,
-              ownerId: ownerId,
-              right: 'owner',
-              text: event.text,
-              updatedAt: DateTime.now(),
-              color: event.color,
-              dontFold: event.dontFold,
-              position: event.fixedPosition,
-              todoList: event.todoList,
-              files: newFiles,
-            ),
-          );
-        });
-      }
-
-      setState(() {
-        widget.notes.sort((a, b) {
-          final posA = a.position;
-          final posB = b.position;
-          if (posA != null && posB != null) return posA.compareTo(posB);
-          if (posA != null) return -1;
-          if (posB != null) return 1;
-          return b.updatedAt.compareTo(a.updatedAt);
-        });
-      });
-    } else if (event is NoteDeletedEvent) {
-      widget.notes.removeWhere((n) => n.id == event.noteId);
-    } else if (event is NoteFileDeletedEvent) {
-      for (final note in widget.notes) {
-        note.files.removeWhere((f) => f.id == event.fileId);
-      }
-    }
-
-    AppEventBus.instance.emit(AppOfflineDataChangeEvent());
+    await AppEventBus.instance.emit(AppOfflineDataChangeEvent());
     if (!widget.usingCache) {
       try {
         await _syncNoteChanges();
       } catch (e) {
-        AppEventBus.instance.emit(
+        await AppEventBus.instance.emit(
           AppOfflineModeChangedEvent(offlineMode: true),
         );
       }
@@ -325,7 +218,7 @@ class _NotesScreenState extends State<NotesScreen> {
                 ),
               );
               if (confirmed == true) {
-                AppEventBus.instance.emit(AppLogoutEvent());
+                await AppEventBus.instance.emit(AppLogoutEvent());
               }
             },
           ),
@@ -352,7 +245,8 @@ class _NotesScreenState extends State<NotesScreen> {
                     .toList();
 
           return RefreshIndicator(
-            onRefresh: () async => AppEventBus.instance.emit(AppSyncEvent()),
+            onRefresh: () async =>
+                await AppEventBus.instance.emit(AppSyncEvent()),
             child: filtered.isEmpty
                 ? ListView(
                     physics: const AlwaysScrollableScrollPhysics(),

@@ -8,6 +8,7 @@ import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_menu_changed_event.dart';
 import 'package:sophie/events/app_offline_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
+import 'package:sophie/events/app_sync_conflict_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/events/note_sync_event.dart';
 import 'package:sophie/events/task_sync_event.dart';
@@ -96,6 +97,21 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case AppOfflineModeChangedEvent():
         setState(() => _usingCache = event.offlineMode);
+        break;
+      case AppSyncConflictEvent():
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'An offline edit conflicted with a newer version. '
+                  'The most recent was kept. Check note history if you need to recover yours.',
+                ),
+                duration: Duration(seconds: 10),
+              ),
+            );
+          }
+        });
         break;
       case AppSyncEvent():
         await AppEventBus.instance.emit(NoteSyncEvent());
@@ -207,13 +223,13 @@ class _HomeScreenState extends State<HomeScreen> {
             selectedIndex: _selectedIndex,
             height: 64,
             labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-            onDestinationSelected: (index) => {
-              setState(() => _selectedIndex = index),
-              AppEventBus.instance.emit(
+            onDestinationSelected: (index) async {
+              setState(() => _selectedIndex = index);
+              await AppEventBus.instance.emit(
                 AppMenuChangedEvent(
                   tab: index == 0 ? AppMenuTab.notes : AppMenuTab.tasks,
                 ),
-              ),
+              );
             },
             destinations: const [
               NavigationDestination(

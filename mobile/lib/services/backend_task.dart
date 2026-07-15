@@ -8,7 +8,7 @@ class BackendTask {
   final Duration timeout;
   final String baseUrl;
   final Map<String, String> Function(bool json) getHeaders;
-  final Function(int statusCode) checkUnauthorized;
+  final Future Function(int statusCode) checkUnauthorized;
 
   BackendTask({
     required this.baseUrl,
@@ -29,7 +29,7 @@ class BackendTask {
         )
         .timeout(timeout);
 
-    checkUnauthorized(response.statusCode);
+    await checkUnauthorized(response.statusCode);
     if (response.statusCode == 200) {
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       return (
@@ -52,7 +52,7 @@ class BackendTask {
         )
         .timeout(timeout);
 
-    checkUnauthorized(response.statusCode);
+    await checkUnauthorized(response.statusCode);
     if (response.statusCode != 204) {
       throw Exception('Failed to delete task: ${response.statusCode}');
     }
@@ -93,7 +93,7 @@ class BackendTask {
                 : http.put(uri, headers: headers, body: body))
             .timeout(timeout);
 
-    checkUnauthorized(response.statusCode);
+    await checkUnauthorized(response.statusCode);
     final expectedStatus = event.isNew ? 201 : 204;
     if (response.statusCode != expectedStatus) {
       throw Exception('Failed to save task: ${response.statusCode}');

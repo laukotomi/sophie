@@ -23,9 +23,9 @@ class BackendClient {
 
   BackendClient({required this.baseUrl, String? token}) : _token = token;
 
-  void _checkUnauthorized(int statusCode) {
+  Future _checkUnauthorized(int statusCode) async {
     if (statusCode == 401) {
-      AppEventBus.instance.emit(AppLogoutEvent());
+      await AppEventBus.instance.emit(AppLogoutEvent());
       throw const UnauthorizedException();
     }
   }
@@ -71,7 +71,7 @@ class BackendClient {
         )
         .timeout(_timeout);
 
-    _checkUnauthorized(response.statusCode);
+    await _checkUnauthorized(response.statusCode);
     if (response.statusCode != 200) {
       throw Exception('Login failed: ${response.statusCode}');
     }
@@ -86,7 +86,7 @@ class BackendClient {
         .get(Uri.parse('$baseUrl/api/dashboard'), headers: _getHeaders(false))
         .timeout(_timeout);
 
-    _checkUnauthorized(response.statusCode);
+    await _checkUnauthorized(response.statusCode);
     if (response.statusCode != 200) {
       throw Exception('Failed to load dashboard data: ${response.statusCode}');
     }

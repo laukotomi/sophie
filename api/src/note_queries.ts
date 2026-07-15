@@ -1,7 +1,6 @@
 import { db } from './db/index.js';
 import { note, collaborator, noteHistory, noteOrder, noteFiles } from './db/schema.js';
 import { eq, and, or, isNull, lt, desc, notInArray, gte, sql } from 'drizzle-orm';
-import { randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
@@ -110,7 +109,7 @@ export async function editOrCreateNote(
 
 export async function acquireNoteLock(userId: string, noteId: string) {
     return db.transaction(async (tx) => {
-        await assertEditAccess(tx, noteId, userId);
+        const existing = await assertEditAccess(tx, noteId, userId);
 
         const now = new Date();
         const lockedUntil = new Date(now.getTime() + 60_000);
@@ -125,10 +124,7 @@ export async function acquireNoteLock(userId: string, noteId: string) {
                     or(isNull(note.editingBy), lt(note.lockedUntil, now), eq(note.editingBy, userId)),
                 ),
             )
-            .returning({
-                text: note.text,
-                updatedAt: note.updatedAt,
-            });
+            .returning({ id: note.id });
 
         if (updated.length === 0) {
             const [locked] = await tx
@@ -138,7 +134,10 @@ export async function acquireNoteLock(userId: string, noteId: string) {
             throw new Error(`Locked:${locked?.editingBy ?? 'unknown'}`);
         }
 
-        return updated[0];
+        return {
+            text: existing.text,
+            updatedAt: existing.updatedAt,
+        };
     });
 }
 
@@ -192,7 +191,7 @@ export async function deleteNote(userId: string, noteId: string): Promise<void> 
 
 async function uploadFiles(
     noteId: string,
-    files?: { name: string; type: string; size: number; stream: ReadableStream<Uint8Array> }[],
+    files?: { id: string; name: string; type: string; size: number; stream: ReadableStream<Uint8Array> }[],
 ): Promise<{ uploadedFiles: UploadedFile[] }> {
     if (!files || files.length === 0) return { uploadedFiles: [] };
 
@@ -201,12 +200,11 @@ async function uploadFiles(
 
     const uploadedFiles: UploadedFile[] = [];
     for (const file of files) {
-        const id = randomUUID();
         await pipeline(
             Readable.fromWeb(file.stream as Parameters<typeof Readable.fromWeb>[0]),
-            createWriteStream(noteFilePath(noteId, id)),
+            createWriteStream(noteFilePath(noteId, file.id)),
         );
-        uploadedFiles.push({ id, name: file.name, type: file.type, size: file.size });
+        uploadedFiles.push({ id: file.id, name: file.name, type: file.type, size: file.size });
     }
 
     return { uploadedFiles };

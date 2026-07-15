@@ -62,7 +62,6 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
   Future _download() async {
     if (!await _ensureStoragePermission()) return;
     if (!mounted) return;
-    if (widget.file.id == null) return;
 
     setState(() => _downloading = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -74,7 +73,7 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
     );
     try {
       final path = '/storage/emulated/0/Download/${widget.file.fileName}';
-      await getIt<BackendNoteFile>().downloadFileTo(widget.file.id!, path);
+      await getIt<BackendNoteFile>().downloadFileTo(widget.file.id, path);
       // Notify MediaStore so the file appears in file explorers immediately.
       await const MethodChannel(
         'sophie/media_scanner',

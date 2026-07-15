@@ -10,6 +10,7 @@ export type NoteFormData = {
 };
 
 export type NoteFile = {
+    id: string;
     name: string;
     type: string;
     size: number;

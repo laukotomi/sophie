@@ -7,7 +7,6 @@ import 'package:sophie/models/alert.dart';
 import 'package:sophie/models/app_user.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/services/alert_notifications.dart';
-import 'package:sophie/services/backend_task.dart';
 import 'package:sophie/services/task_events.dart';
 import 'package:sophie/services/user_service.dart';
 import 'package:sophie/dialogs/discard_dialog.dart';
@@ -173,12 +172,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
 
       await TaskEventBus.instance.emit(event);
 
-      await AlertNotifications.scheduleAlerts(
-        event.taskId,
-        event.dueAt,
-        event.alerts,
-        event.text,
-      );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
@@ -211,7 +204,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     if (confirmed != true || !mounted) return;
     setState(() => _deleting = true);
     try {
-      TaskEventBus.instance.emit(
+      await TaskEventBus.instance.emit(
         TaskDeletedEvent(taskId: widget.existingTask!.id),
       );
       await AlertNotifications.cancelForTask(widget.existingTask!.id);

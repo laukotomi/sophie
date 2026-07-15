@@ -21,6 +21,9 @@ import 'package:sophie/dialogs/discard_dialog.dart';
 import 'package:sophie/widgets/note_history_sheet.dart';
 import 'package:sophie/dialogs/note_settings_dialog.dart';
 import 'package:sophie/dialogs/type_to_confirm_dialog.dart';
+import 'package:uuid/uuid.dart';
+
+const _uuId = Uuid();
 
 class AddNoteScreen extends StatefulWidget {
   // When non-null the screen is in edit mode
@@ -114,10 +117,11 @@ class _AddNoteScreenState extends State<AddNoteScreen>
 
     final messenger = ScaffoldMessenger.of(context);
     try {
-      if (file.id != null) {
-        final event = NoteFileDeletedEvent(fileId: file.id!);
-        await NoteEventBus.instance.emit(event);
-      }
+      final event = NoteFileDeletedEvent(
+        noteId: widget.existingNote!.id,
+        fileId: file.id,
+      );
+      await NoteEventBus.instance.emit(event);
       if (mounted) setState(() => _existingFiles.remove(file));
     } catch (_) {
       messenger.showSnackBar(
@@ -300,7 +304,9 @@ class _AddNoteScreenState extends State<AddNoteScreen>
             .toList(),
         color: _color,
         dontFold: _dontFold,
-        files: _pickedFiles.map((f) => (path: f.path!, name: f.name)).toList(),
+        newFiles: _pickedFiles
+            .map((f) => (id: _uuId.v4(), path: f.path!, name: f.name))
+            .toList(),
         fixedPosition: _fixedPosition,
         noteId: _isEditing ? widget.existingNote!.id : null,
         text: _textController.text.trim(),

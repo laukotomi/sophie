@@ -5,7 +5,7 @@ import { user } from './auth.schema.js';
 export const noteRight = pgEnum('note_right', ['view', 'edit']);
 
 export const note = pgTable('note', {
-    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: text('id').primaryKey(),
     text: text('text').notNull(),
     color: text('color'),
     dontFold: boolean('dont_fold').notNull().default(false),
@@ -54,7 +54,7 @@ export const noteOrder = pgTable('note_order', {
 ]);
 
 export const noteFiles = pgTable('note_files', {
-    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: text('id').primaryKey(),
     noteId: text('note_id')
         .notNull()
         .references(() => note.id, { onDelete: 'cascade' }),
@@ -65,7 +65,7 @@ export const noteFiles = pgTable('note_files', {
 });
 
 export const task = pgTable('task', {
-    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    id: text('id').primaryKey(),
     owner: text('owner')
         .notNull()
         .references(() => user.id, { onDelete: 'cascade' }),

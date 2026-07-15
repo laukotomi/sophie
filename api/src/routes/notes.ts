@@ -26,7 +26,10 @@ async function parseNoteForm(form: FormData | null): Promise<NoteFormData | null
     const todoList = form.get('todoList') === 'true';
 
     const fileEntries = form.getAll('files').filter((f): f is File => f instanceof File);
-    const filesData = fileEntries.map((f) => ({
+    const fileIds = form.getAll('fileIds').filter((f): f is string => typeof f === 'string');
+    if (fileIds.length !== fileEntries.length) return null;
+    const filesData = fileEntries.map((f, i) => ({
+        id: fileIds[i]!,
         name: f.name,
         type: f.type || 'application/octet-stream',
         size: f.size,
