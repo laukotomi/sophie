@@ -46,7 +46,7 @@ class TaskSetDoneEvent extends TaskEvent {
         rrule: task.rrule,
         taskId: next.nextTaskId,
         text: task.text,
-      ).sync(tasks, setState);
+      ).apply(tasks, setState);
     }
   }
 }
