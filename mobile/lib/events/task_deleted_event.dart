@@ -1,5 +1,6 @@
 import 'package:sophie/main.dart';
 import 'package:sophie/models/task.dart';
+import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/backend_task.dart';
 import 'package:sophie/services/task_events.dart';
 
@@ -22,6 +23,7 @@ class TaskDeletedEvent extends TaskEvent {
 
   @override
   Future apply(List<Task> tasks, Function setState) async {
+    await AlertNotifications.cancelForTask(taskId);
     setState(() {
       tasks.removeWhere((t) => t.id == taskId);
     });

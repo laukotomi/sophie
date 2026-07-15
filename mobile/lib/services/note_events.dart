@@ -4,13 +4,9 @@ import 'package:sophie/events/note_deleted_event.dart';
 import 'package:sophie/events/note_file_deleted_event.dart';
 import 'package:sophie/events/note_saved_event.dart';
 import 'package:sophie/models/note.dart';
+import 'package:sophie/services/base_event.dart';
 
-abstract class NoteEvent {
-  DateTime createdAt = DateTime.now();
-  int get eventId => createdAt.millisecondsSinceEpoch;
-
-  String get type;
-
+abstract class NoteEvent extends BaseEvent {
   Map<String, dynamic> toJson() => {
     'createdAt': createdAt.toIso8601String(),
     'type': type,

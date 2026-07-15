@@ -64,6 +64,8 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   String? _errorMessage;
 
   bool get _isEditing => widget.existingNote != null;
+  bool get _canDeleteNote =>
+      _isEditing && (widget.existingNote?.isOwner ?? false);
 
   bool get _hasChanges {
     final originalText = widget.existingNote?.text ?? '';
@@ -253,6 +255,8 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   }
 
   Future _deleteNote() async {
+    if (!_canDeleteNote) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => const TypeToConfirmDialog(
@@ -376,7 +380,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
                 if (value == 'collaborator') _openAddCollaborator();
                 if (value == 'file') _openAddFile();
                 if (value == 'history') _openHistory();
-                if (value == 'delete') _deleteNote();
+                if (value == 'delete' && _canDeleteNote) _deleteNote();
               },
               itemBuilder: (_) => [
                 const PopupMenuItem(
@@ -401,8 +405,8 @@ class _AddNoteScreenState extends State<AddNoteScreen>
                       title: Text('Version history'),
                     ),
                   ),
-                if (_isEditing) const PopupMenuDivider(),
-                if (_isEditing)
+                if (_canDeleteNote) const PopupMenuDivider(),
+                if (_canDeleteNote)
                   PopupMenuItem(
                     value: 'delete',
                     child: ListTile(

@@ -23,6 +23,7 @@ export type CollaboratorInfo = {
 }
 
 export type TaskData = {
+    taskId: string;
     text: string;
     rrule: string | null;
     color: string | null;

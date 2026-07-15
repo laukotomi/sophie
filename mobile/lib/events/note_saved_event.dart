@@ -15,6 +15,7 @@ const _uuid = Uuid();
 class NoteSavedEvent extends NoteEvent {
   late final bool isNew;
   late final String noteId;
+  bool skipConflictCheck = false;
   final String text;
   final List<({String userId, String right})> collaborators;
   final int? fixedPosition;
@@ -155,7 +156,7 @@ class NoteSavedEvent extends NoteEvent {
 
     if (!isNew) {
       final result = await noteClient.acquireNoteLock(noteId);
-      hadConflict = createdAt.isBefore(result.updatedAt);
+      hadConflict = !skipConflictCheck && createdAt.isBefore(result.updatedAt);
     }
 
     await noteClient.saveNote(this);

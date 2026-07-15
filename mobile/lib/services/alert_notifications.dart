@@ -64,13 +64,13 @@ class AlertNotifications {
 
     List<ScheduledNotification> scheduled = [];
     final now = DateTime.now();
+    final mutedUntil = Storage.mutedUntil;
 
     for (final alert in alerts) {
       final fireAt = _resolveFireAt(alert, taskDueAt);
       if (fireAt == null || !fireAt.isAfter(now)) continue;
 
       final alarmId = _notifId(taskId, scheduled.length);
-      final mutedUntil = Storage.mutedUntil;
       final muted = mutedUntil != null && fireAt.isBefore(mutedUntil);
       final notification = await _setAlarmAt(
         alarmId,
@@ -254,7 +254,7 @@ class AlertNotifications {
         androidFullScreenIntent: false,
         volumeSettings: VolumeSettings.fade(
           volume: 0,
-          fadeDuration: Duration.zero,
+          fadeDuration: Duration(seconds: 1),
           volumeEnforced: true,
         ),
         notificationSettings: NotificationSettings(
@@ -306,21 +306,48 @@ class AlertNotifications {
 
     AwesomeNotifications().setListeners(
       onActionReceivedMethod: _onNotificationAction,
+      onDismissActionReceivedMethod: _onNotificationDismissed,
+    );
+  }
+
+  @pragma('vm:entry-point')
+  static Future _onNotificationDismissed(ReceivedAction action) async {
+    final notifId = action.id;
+    if (notifId == null) return;
+
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: notifId,
+        channelKey: _actionsChannelKey,
+        title: action.title ?? 'Sophie',
+        body: action.body,
+        payload: action.payload,
+        autoDismissible: false,
+        wakeUpScreen: true,
+        locked: true,
+      ),
+      actionButtons: [
+        NotificationActionButton(key: _stopActionKey, label: 'Stop'),
+        NotificationActionButton(key: _doneActionKey, label: 'Mark done'),
+        NotificationActionButton(key: _snoozeActionKey, label: 'Snooze..'),
+      ],
     );
   }
 
   @pragma('vm:entry-point')
   static Future _onNotificationAction(ReceivedAction action) async {
+    await Storage.init();
+
     final alarmId = int.tryParse(action.payload?['alarmId'] ?? '');
     final taskId = action.payload?['taskId'];
     if (alarmId == null || taskId == null || action.body == null) return;
 
+    await Storage.removeTaskAlert(taskId, alarmId);
     await _cancelByAlarmId(alarmId);
+
     if (action.buttonKeyPressed == _stopActionKey) {
       return;
     }
-
-    await Storage.init();
 
     if (action.buttonKeyPressed == _snoozeActionKey) {
       await Storage.addSnoozePending(alarmId, taskId, action.body!);

@@ -106,7 +106,6 @@ class _AlertManagerScreenState extends State<AlertManagerScreen> {
     try {
       final until = DateTime.now().add(duration);
       await AlertNotifications.muteUntil(until, widget.tasks);
-    } catch (_) {
     } finally {
       if (mounted) {
         setState(() {

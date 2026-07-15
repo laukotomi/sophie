@@ -1,10 +1,10 @@
 import { db } from './db/index.js';
-import { randomUUID } from "crypto";
 import { task, taskCollaborator, taskAlert } from './db/schema.js';
 import { and, eq, isNull, isNotNull } from 'drizzle-orm';
 import rrulePkg from 'rrule';
 import { parseDateISOString } from './utils.js';
 import { AlertInput, TaskData } from './models.js';
+import { randomUUID } from 'crypto';
 const { RRule } = rrulePkg;
 
 function getNextOccurrence(rruleStr: string, currentDueAt: Date): Date | null {
@@ -20,18 +20,11 @@ function getNextOccurrence(rruleStr: string, currentDueAt: Date): Date | null {
 
 export async function editOrCreateTask(
     userId: string,
-    taskId: string | null,
+    isEdit: boolean,
     taskData: TaskData,
-): Promise<string> {
-    const isEdit = typeof taskId === 'string' && taskId.length > 0;
-
-    if (!isEdit)
-        taskId = randomUUID();
-    else
-        taskId = taskId as string;
-
+) {
     if (isEdit)
-        await assertEditAccess(userId, taskId);
+        await assertEditAccess(userId, taskData.taskId);
 
     const taskDbData = {
         text: taskData.text,
@@ -44,24 +37,24 @@ export async function editOrCreateTask(
         if (isEdit) {
             await tx.update(task)
                 .set(taskData)
-                .where(eq(task.id, taskId));
+                .where(eq(task.id, taskData.taskId));
         }
         else {
             await tx.insert(task).values({
-                id: taskId,
+                id: taskData.taskId,
                 owner: userId,
                 ...taskDbData
             });
         }
 
         if (isEdit) {
-            await tx.delete(taskCollaborator).where(eq(taskCollaborator.taskId, taskId));
-            await tx.delete(taskAlert).where(eq(taskAlert.taskId, taskId));
+            await tx.delete(taskCollaborator).where(eq(taskCollaborator.taskId, taskData.taskId));
+            await tx.delete(taskAlert).where(eq(taskAlert.taskId, taskData.taskId));
         }
 
         if (taskData.collaboratorIds.length > 0) {
             await tx.insert(taskCollaborator).values(
-                taskData.collaboratorIds.map((uid) => ({ userId: uid, taskId })),
+                taskData.collaboratorIds.map((uid) => ({ userId: uid, taskId: taskData.taskId })),
             );
         }
 
@@ -69,14 +62,12 @@ export async function editOrCreateTask(
             await tx.insert(taskAlert).values(
                 taskData.alerts.map((a) =>
                     a.type === 'absolute'
-                        ? { taskId, alertAt: a.alertAt, timeBefore: null }
-                        : { taskId, alertAt: null, timeBefore: a.timeBefore },
+                        ? { taskId: taskData.taskId, alertAt: a.alertAt, timeBefore: null }
+                        : { taskId: taskData.taskId, alertAt: null, timeBefore: a.timeBefore },
                 ),
             );
         }
     });
-
-    return taskId;
 }
 
 export async function deleteTask(userId: string, taskId: string): Promise<void> {
@@ -125,18 +116,19 @@ export async function setTaskDone(
 
     const taskData: TaskData = {
         ...existing,
+        taskId: randomUUID(),
         dueAt: nextDueAt.toISOString(),
         collaboratorIds: collabs.map((c) => c.userId),
         alerts,
-    }
+    };
 
-    const nextTaskId = await editOrCreateTask(
+    await editOrCreateTask(
         existing.owner,
-        null,
+        false,
         taskData
     );
 
-    return { nextTaskId, nextDueAt };
+    return { nextTaskId: taskData.taskId, nextDueAt };
 }
 
 async function assertEditAccess(userId: string, taskId: string) {

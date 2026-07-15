@@ -23,22 +23,22 @@ class BackendNote {
     required this.timeout,
   });
 
-  Future<http.MultipartRequest> _buildNoteRequest(
-    String method, {
-    String? noteId,
+  Future<http.MultipartRequest> _buildNoteRequest({
+    required String method,
+    required String noteId,
     required String text,
     required List<({String userId, String right})> collaborators,
     int? fixedPosition,
     String? color,
-    bool dontFold = false,
-    bool todoList = false,
+    required bool dontFold,
+    required bool todoList,
     required List<({String id, String path, String name})> files,
   }) async {
     final request =
         http.MultipartRequest(method, Uri.parse('$baseUrl/api/notes'))
           ..headers.addAll(getHeaders(false))
           ..fields['text'] = text;
-    if (noteId != null) request.fields['noteId'] = noteId;
+    request.fields['noteId'] = noteId;
     if (collaborators.isNotEmpty) {
       request.fields['collaborators'] = jsonEncode(
         collaborators
@@ -70,7 +70,7 @@ class BackendNote {
   /// Creates a new note when [noteId] is null, or updates an existing one.
   Future saveNote(NoteSavedEvent event) async {
     final request = await _buildNoteRequest(
-      event.isNew ? 'POST' : 'PUT',
+      method: event.isNew ? 'POST' : 'PUT',
       noteId: event.noteId,
       text: event.text,
       collaborators: event.collaborators,

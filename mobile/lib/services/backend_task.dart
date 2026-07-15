@@ -59,8 +59,7 @@ class BackendTask {
   }
 
   /// Creates a new task when [taskId] is null, or updates an existing one.
-  /// Returns the task ID (server-assigned for creates, same value for updates).
-  Future<String> saveTask(TaskSavedEvent event) async {
+  Future saveTask(TaskSavedEvent event) async {
     final body = jsonEncode({
       'taskId': event.taskId,
       'text': event.text,
@@ -98,8 +97,5 @@ class BackendTask {
     if (response.statusCode != expectedStatus) {
       throw Exception('Failed to save task: ${response.statusCode}');
     }
-    if (!event.isNew) return event.taskId;
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    return json['id'] as String;
   }
 }

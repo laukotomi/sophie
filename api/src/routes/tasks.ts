@@ -8,6 +8,9 @@ import { TaskData, AlertInput } from '../models.js';
 async function parseAlertsForm(body: any): Promise<TaskData | null> {
     if (!body) return null;
 
+    const taskId = body.taskId;
+    if (typeof taskId !== 'string' || !taskId.trim()) return null;
+
     const text = body.text;
     if (typeof text !== 'string' || !text.trim()) return null;
 
@@ -40,6 +43,7 @@ async function parseAlertsForm(body: any): Promise<TaskData | null> {
     }
 
     return {
+        taskId: taskId.trim(),
         text: text.trim(),
         rrule,
         color,
@@ -62,16 +66,15 @@ tasks.post('/', async (c) => {
         return c.json({ error: 'text is required' }, 400);
     }
 
-    let taskId: string;
     try {
-        taskId = await editOrCreateTask(user.id, null, parsed);
+        await editOrCreateTask(user.id, false, parsed);
     } catch (e) {
         console.error('[POST /api/tasks] createTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
         return c.json({ error: message }, 500);
     }
 
-    return c.json({ id: taskId }, 201);
+    return new Response(null, { status: 201 });
 });
 
 // Edit task text, rrule, dueAt and collaborators
@@ -89,7 +92,7 @@ tasks.put('/', async (c) => {
     }
 
     try {
-        await editOrCreateTask(user.id, body.taskId, parsed);
+        await editOrCreateTask(user.id, true, parsed);
     } catch (e) {
         console.error('[PUT /api/tasks] updateTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';

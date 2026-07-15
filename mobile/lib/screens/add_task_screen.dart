@@ -207,7 +207,6 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       await TaskEventBus.instance.emit(
         TaskDeletedEvent(taskId: widget.existingTask!.id),
       );
-      await AlertNotifications.cancelForTask(widget.existingTask!.id);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {

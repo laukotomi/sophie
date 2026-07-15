@@ -10,7 +10,9 @@ import 'package:sophie/models/task.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/screens/add_task_screen.dart';
 import 'package:sophie/screens/alert_manager_screen.dart';
+import 'package:sophie/screens/event_manager_screen.dart';
 import 'package:sophie/services/backend.dart';
+import 'package:sophie/services/base_event.dart';
 import 'package:sophie/services/storage.dart';
 import 'package:sophie/services/task_events.dart';
 import 'package:sophie/widgets/task_card.dart';
@@ -72,11 +74,17 @@ class _TasksScreenState extends State<TasksScreen> {
         }
       }
     } catch (e) {
+      await AppEventBus.instance.emit(
+        AppOfflineModeChangedEvent(offlineMode: true),
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error syncing task changes: $e')),
         );
       }
+
+      rethrow;
     }
   }
 
@@ -89,9 +97,7 @@ class _TasksScreenState extends State<TasksScreen> {
       try {
         await _syncTaskChanges();
       } catch (e) {
-        await AppEventBus.instance.emit(
-          AppOfflineModeChangedEvent(offlineMode: true),
-        );
+        // Ignore errors here; they will be handled in _syncTaskChanges.
       }
     }
   }
@@ -194,9 +200,24 @@ class _TasksScreenState extends State<TasksScreen> {
           if (widget.usingCache)
             Tooltip(
               message: 'Showing cached data — could not reach server',
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4),
-                child: Icon(Icons.cloud_off, color: Colors.orange),
+              child: IconButton(
+                icon: const Icon(Icons.cloud_off, color: Colors.orange),
+                onPressed: () async {
+                  final taskEvents = await Storage.getOfflineTaskEvents();
+                  if (!context.mounted) return;
+                  final events = taskEvents
+                      .map<BaseEvent>((event) => event)
+                      .toList();
+                  await Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => EventManagerScreen(
+                        events: events,
+                        onDeleteEvent: (event) =>
+                            Storage.removeTaskEvent(event.eventId),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           IconButton(

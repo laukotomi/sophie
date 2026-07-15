@@ -114,26 +114,31 @@ class _HomeScreenState extends State<HomeScreen> {
         });
         break;
       case AppSyncEvent():
-        await AppEventBus.instance.emit(NoteSyncEvent());
-        await AppEventBus.instance.emit(TaskSyncEvent());
-        setState(() {
-          _dataFuture = Future(() async {
-            final data = await _loadData();
-            final snooze = await Storage.popLastSnoozePending();
-            if (snooze != null) {
-              await navigatorKey.currentState?.push<void>(
-                MaterialPageRoute(
-                  builder: (_) => SnoozePickerScreen(
-                    alarmId: snooze.alarmId,
-                    taskId: snooze.taskId,
-                    body: snooze.body,
+        try {
+          await AppEventBus.instance.emit(NoteSyncEvent());
+          await AppEventBus.instance.emit(TaskSyncEvent());
+
+          setState(() {
+            _dataFuture = Future(() async {
+              final data = await _loadData();
+              final snooze = await Storage.tryGetPendingSnooze();
+              if (snooze != null) {
+                await navigatorKey.currentState?.push<void>(
+                  MaterialPageRoute(
+                    builder: (_) => SnoozePickerScreen(
+                      alarmId: snooze.alarmId,
+                      taskId: snooze.taskId,
+                      body: snooze.body,
+                    ),
                   ),
-                ),
-              );
-            }
-            return data;
+                );
+              }
+              return data;
+            });
           });
-        });
+        } catch (e) {
+          //
+        }
         break;
     }
   }

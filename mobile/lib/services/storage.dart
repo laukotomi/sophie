@@ -202,12 +202,10 @@ class Storage {
     await _saveSnoozePendingList(list);
   }
 
-  static Future<PendingSnooze?> popLastSnoozePending() async {
+  static Future<PendingSnooze?> tryGetPendingSnooze() async {
     final list = _getSnoozePendings();
     if (list.isEmpty) return null;
-    final item = list.removeLast();
-    await _saveSnoozePendingList(list);
-    return item;
+    return list[0];
   }
 
   // ---------------------------------------------------------------------------

@@ -5,12 +5,15 @@ import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_offline_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
+import 'package:sophie/events/note_saved_event.dart';
 import 'package:sophie/events/note_sync_event.dart';
 import 'package:sophie/models/note.dart';
+import 'package:sophie/screens/event_manager_screen.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/services/note_events.dart';
 import 'package:sophie/screens/add_note_screen.dart';
+import 'package:sophie/services/base_event.dart';
 import 'package:sophie/services/storage.dart';
 import 'package:sophie/widgets/note_card.dart';
 
@@ -69,8 +72,13 @@ class _NotesScreenState extends State<NotesScreen> {
     try {
       final events = await Storage.getOfflineNoteEvents();
       if (events.isEmpty) return;
+      final seenSavedNoteIds = <String>{};
 
       for (final event in events) {
+        if (event is NoteSavedEvent) {
+          event.skipConflictCheck = !seenSavedNoteIds.add(event.noteId);
+        }
+
         try {
           await event.sync(widget.notes, _safeSetState);
           await Storage.removeNoteEvent(event.eventId);
@@ -81,11 +89,17 @@ class _NotesScreenState extends State<NotesScreen> {
         }
       }
     } catch (e) {
+      await AppEventBus.instance.emit(
+        AppOfflineModeChangedEvent(offlineMode: true),
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error syncing note changes: $e')),
         );
       }
+
+      rethrow;
     }
   }
 
@@ -102,9 +116,7 @@ class _NotesScreenState extends State<NotesScreen> {
       try {
         await _syncNoteChanges();
       } catch (e) {
-        await AppEventBus.instance.emit(
-          AppOfflineModeChangedEvent(offlineMode: true),
-        );
+        // Ignore errors here; they will be handled in _syncTaskChanges.
       }
     }
   }
@@ -191,9 +203,24 @@ class _NotesScreenState extends State<NotesScreen> {
           if (widget.usingCache)
             Tooltip(
               message: 'Showing cached data — could not reach server',
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4),
-                child: Icon(Icons.cloud_off, color: Colors.orange),
+              child: IconButton(
+                icon: const Icon(Icons.cloud_off, color: Colors.orange),
+                onPressed: () async {
+                  final noteEvents = await Storage.getOfflineNoteEvents();
+                  if (!context.mounted) return;
+                  final events = noteEvents
+                      .map<BaseEvent>((event) => event)
+                      .toList();
+                  await Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => EventManagerScreen(
+                        events: events,
+                        onDeleteEvent: (event) =>
+                            Storage.removeNoteEvent(event.eventId),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           IconButton(
