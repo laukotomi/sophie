@@ -93,11 +93,17 @@ class Storage {
     await _saveTaskAlertsMap(map);
   }
 
-  static Future setTaskAlert(String taskId, ScheduledNotification alert) async {
+  static Future updateTaskAlert(
+    String taskId,
+    int alarmId,
+    ScheduledNotification updated,
+  ) async {
     final map = getTaskAlertsMap();
-    final alerts = map[taskId] ?? [];
-    alerts.add(alert);
-    map[taskId] = alerts;
+    final alerts = map[taskId];
+    if (alerts == null) return;
+    final index = alerts.indexWhere((e) => e.id == alarmId);
+    if (index == -1) return;
+    alerts[index] = updated;
     await _saveTaskAlertsMap(map);
   }
 
@@ -122,22 +128,6 @@ class Storage {
   ) async {
     await _prefs.setString(_taskAlertsMapKey, jsonEncode(map));
   }
-
-  // static int getAlertCount(String taskId) {
-  //   final map = getAlertCountsMap();
-  //   return (map[taskId]) ?? 0;
-  // }
-
-  // static Future setAlertCount(String taskId, int count) async {
-  //   final map = getAlertCountsMap();
-  //   map[taskId] = count;
-  //   _saveAlertCountsMap(map);
-  // }
-
-  // static Future removeAlertCount(String taskId) async {
-  //   final map = getAlertCountsMap()..remove(taskId);
-  //   _saveAlertCountsMap(map);
-  // }
 
   // ---------------------------------------------------------------------------
   // Mute

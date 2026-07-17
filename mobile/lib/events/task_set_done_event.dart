@@ -9,12 +9,12 @@ import 'package:sophie/utils/task_utils.dart';
 
 class TaskSetDoneEvent extends TaskEvent {
   final Task task;
-  final bool done;
+  final DateTime? doneAt;
   TaskSavedEvent? nextTaskEvent;
 
   TaskSetDoneEvent({
     required this.task,
-    required this.done,
+    required this.doneAt,
     this.nextTaskEvent,
   });
 
@@ -26,7 +26,7 @@ class TaskSetDoneEvent extends TaskEvent {
     return {
       ...super.toJson(),
       'task': task.toJson(),
-      'done': done,
+      'doneAt': doneAt?.toIso8601String(),
       'nextTaskEvent': nextTaskEvent?.toJson(),
     };
   }
@@ -34,7 +34,9 @@ class TaskSetDoneEvent extends TaskEvent {
   factory TaskSetDoneEvent.fromJson(Map<String, dynamic> m) {
     return TaskSetDoneEvent(
       task: Task.fromJson(m['task'] as Map<String, dynamic>),
-      done: m['done'] as bool,
+      doneAt: m['doneAt'] != null
+          ? DateTime.parse(m['doneAt'] as String)
+          : null,
       nextTaskEvent: m['nextTaskEvent'] != null
           ? TaskSavedEvent.fromJson(m['nextTaskEvent'] as Map<String, dynamic>)
           : null,
@@ -47,11 +49,11 @@ class TaskSetDoneEvent extends TaskEvent {
       (t) => t.id == this.task.id,
     ); // required because this task can be initialized from notification event
     setState(() {
-      task.doneAt = done ? DateTime.now() : null;
+      task.doneAt = doneAt;
       TaskUtils.sortTasks(tasks);
     });
 
-    if (done) {
+    if (doneAt != null) {
       await AlertNotifications.cancelForTask(task.id);
     } else {
       await AlertNotifications.scheduleAlerts(
@@ -59,10 +61,11 @@ class TaskSetDoneEvent extends TaskEvent {
         task.dueAt,
         task.alerts,
         task.text,
+        null,
       );
     }
 
-    if (done && task.rrule != null && task.dueAt != null) {
+    if (doneAt != null && task.rrule != null && task.dueAt != null) {
       final rrule = RecurrenceRule.fromString(task.rrule!);
 
       final startFakeUtc = DateTime.utc(

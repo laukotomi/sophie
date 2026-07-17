@@ -4,6 +4,7 @@ class ScheduledNotification {
   final DateTime scheduledDateTime;
   final bool muted;
   final String taskId;
+  bool rescheduled = false;
 
   ScheduledNotification({
     required this.id,
@@ -11,6 +12,7 @@ class ScheduledNotification {
     required this.scheduledDateTime,
     required this.muted,
     required this.taskId,
+    this.rescheduled = false,
   });
 
   factory ScheduledNotification.fromJson(Map<String, dynamic> m) =>
@@ -20,6 +22,7 @@ class ScheduledNotification {
         scheduledDateTime: DateTime.parse(m['scheduledDateTime'] as String),
         muted: m['muted'] as bool,
         taskId: m['taskId'] as String,
+        rescheduled: m['rescheduled'] as bool,
       );
 
   Map<String, dynamic> toJson() => {
@@ -28,5 +31,6 @@ class ScheduledNotification {
     'scheduledDateTime': scheduledDateTime.toIso8601String(),
     'muted': muted,
     'taskId': taskId,
+    'rescheduled': rescheduled,
   };
 }

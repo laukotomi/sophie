@@ -58,18 +58,29 @@ class AlertNotifications {
     DateTime? taskDueAt,
     List<Alert> alerts,
     String text,
+    Map<int, DateTime>? rescheduledAlarms,
   ) async {
-    await cancelForTask(taskId);
+    await cancelForTask(taskId, save: false);
 
-    List<ScheduledNotification> scheduled = [];
+    List<ScheduledNotification> notifications = [];
     final now = DateTime.now();
     final mutedUntil = Storage.mutedUntil;
 
     for (final alert in alerts) {
-      final fireAt = _resolveFireAt(alert, taskDueAt);
+      DateTime? fireAt = _resolveFireAt(alert, taskDueAt);
       if (fireAt == null || !fireAt.isAfter(now)) continue;
 
-      final alarmId = _notifId(taskId, scheduled.length);
+      final alarmId = _notifId(taskId, notifications.length);
+      final rescheduledAt =
+          rescheduledAlarms != null && rescheduledAlarms.containsKey(alarmId)
+          ? rescheduledAlarms[alarmId]
+          : null;
+
+      if (rescheduledAt != null) {
+        // This alert was snoozed and rescheduled by the user. Use the new time.
+        fireAt = rescheduledAt;
+      }
+
       final muted = mutedUntil != null && fireAt.isBefore(mutedUntil);
       final notification = await _setAlarmAt(
         alarmId,
@@ -79,11 +90,80 @@ class AlertNotifications {
         muted: muted,
       );
 
-      scheduled.add(notification);
+      notification.rescheduled = rescheduledAt != null;
+      notifications.add(notification);
     }
 
-    if (scheduled.isNotEmpty) {
-      await Storage.setTaskAlerts(taskId, scheduled);
+    if (notifications.isNotEmpty) {
+      await Storage.setTaskAlerts(taskId, notifications);
+    }
+  }
+
+  // Called when snoozing an alarm
+  static Future rescheduleAlarm(
+    int alarmId,
+    String taskId,
+    DateTime fireAt,
+    String text,
+  ) async {
+    await _cancelByAlarmId(alarmId);
+    final notification = await _setAlarmAt(alarmId, fireAt, taskId, text);
+    notification.rescheduled = true;
+    await Storage.updateTaskAlert(taskId, alarmId, notification);
+  }
+
+  /// Cancels all existing alarms (derived from the old cached data) then
+  /// reschedules from [freshTasks]. Call this after every dashboard refresh.
+  static Future rescheduleAll(List<Task> freshTasks) async {
+    final alerts = Storage.getTaskAlertsMap().values
+        .expand((list) => list)
+        .toList();
+
+    Map<int, DateTime> rescheduledAlarms = {
+      for (final a in alerts.where((a) => a.rescheduled))
+        a.id: a.scheduledDateTime,
+    };
+
+    await Alarm.stopAll();
+    await AwesomeNotifications().cancelAll();
+    await Storage.clearTaskAlertsMap();
+
+    // Schedule fresh alarms for all pending tasks.
+    for (final task in freshTasks.where((t) => t.doneAt == null)) {
+      await scheduleAlerts(
+        task.id,
+        task.dueAt,
+        task.alerts,
+        task.text,
+        rescheduledAlarms,
+      );
+    }
+  }
+
+  static Future cancelForTask(String taskId, {bool save = true}) async {
+    final alerts = Storage.getTaskAlerts(taskId);
+    for (final alert in alerts) {
+      await _cancelByAlarmId(alert.id);
+    }
+    if (save) await Storage.removeTaskAlerts(taskId);
+  }
+
+  static Future cancelAlarm(ScheduledNotification alarm) async {
+    await _cancelByAlarmId(alarm.id);
+    await Storage.removeTaskAlert(alarm.taskId, alarm.id);
+  }
+
+  static Future _cancelByAlarmId(int alarmId) async {
+    try {
+      await Alarm.stop(alarmId);
+    } catch (_) {
+      // Ignore errors if the alarm was already stopped or dismissed.
+    }
+
+    try {
+      await AwesomeNotifications().dismiss(alarmId);
+    } catch (_) {
+      // Ignore errors if the notification was already dismissed.
     }
   }
 
@@ -151,62 +231,6 @@ class AlertNotifications {
     );
   }
 
-  static Future rescheduleAlarm(
-    int alarmId,
-    String taskId,
-    DateTime fireAt,
-    String text,
-  ) async {
-    await _cancelByAlarmId(alarmId);
-    await Storage.removeTaskAlert(taskId, alarmId);
-    final notification = await _setAlarmAt(alarmId, fireAt, taskId, text);
-    await Storage.setTaskAlert(taskId, notification);
-  }
-
-  /// Cancels all existing alarms (derived from the old cached data) then
-  /// reschedules from [freshTasks]. Call this after every dashboard refresh.
-  static Future rescheduleAll(List<Task> freshTasks) async {
-    await Alarm.stopAll();
-    await AwesomeNotifications().cancelAll();
-    await Storage.clearTaskAlertsMap();
-
-    // Schedule fresh alarms for all pending tasks.
-    for (final task in freshTasks.where((t) => t.doneAt == null)) {
-      await scheduleAlerts(task.id, task.dueAt, task.alerts, task.text);
-    }
-  }
-
-  static Future cancelForTask(String taskId) async {
-    final alerts = Storage.getTaskAlerts(taskId);
-    for (final alert in alerts) {
-      await _cancelByAlarmId(alert.id);
-    }
-    await Storage.removeTaskAlerts(taskId);
-  }
-
-  static Future cancelAlarm(ScheduledNotification alarm) async {
-    await _cancelByAlarmId(alarm.id);
-    await Storage.removeTaskAlert(alarm.taskId, alarm.id);
-  }
-
-  static Future _cancelByAlarmId(int alarmId) async {
-    try {
-      await Alarm.stop(alarmId);
-    } catch (_) {
-      // Ignore errors if the alarm was already stopped or dismissed.
-    }
-
-    try {
-      await AwesomeNotifications().dismiss(alarmId);
-    } catch (_) {
-      // Ignore errors if the notification was already dismissed.
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-
   /// Mutes all alerts until [until]. Reschedules currently-audible alarms
   /// silently and sets a wakeup alarm to auto-restore at [until].
   static Future muteUntil(DateTime until, List<Task> tasks) async {
@@ -223,6 +247,10 @@ class AlertNotifications {
     } catch (_) {}
     await rescheduleAll(tasks);
   }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
 
   static Future _onAlarmRing(AlarmSet alarmSet) async {
     if (alarmSet.alarms.any((alarm) => alarm.id == muteWakeupAlarmId)) {
@@ -258,10 +286,6 @@ class AlertNotifications {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
 
   /// Resolves the absolute fire time from an alert definition.
   static DateTime? _resolveFireAt(Alert alert, DateTime? dueAt) {
@@ -343,7 +367,9 @@ class AlertNotifications {
     final data = Storage.getDashboardData();
     if (data == null) return;
     final task = data.tasks.firstWhere((t) => t.id == taskId);
-    await TaskEventBus.instance.emit(TaskSetDoneEvent(done: true, task: task));
+    await TaskEventBus.instance.emit(
+      TaskSetDoneEvent(doneAt: DateTime.now(), task: task),
+    );
   }
 
   static Future _onNotificationDismiss(ReceivedAction action) async {
