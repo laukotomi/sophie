@@ -1,8 +1,10 @@
 import 'package:sophie/events/task_saved_event.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/task.dart';
+import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/backend_task.dart';
 import 'package:sophie/services/task_events.dart';
+import 'package:sophie/utils/task_utils.dart';
 
 class TaskSetDoneEvent extends TaskEvent {
   final Task task;
@@ -27,9 +29,24 @@ class TaskSetDoneEvent extends TaskEvent {
 
   @override
   Future apply(List<Task> tasks, Function setState) async {
+    final task = tasks.firstWhere(
+      (t) => t.id == this.task.id,
+    ); // required because this task can be initialized from notification event
     setState(() {
       task.doneAt = done ? DateTime.now() : null;
+      TaskUtils.sortTasks(tasks);
     });
+
+    if (done) {
+      await AlertNotifications.cancelForTask(task.id);
+    } else {
+      await AlertNotifications.scheduleAlerts(
+        task.id,
+        task.dueAt,
+        task.alerts,
+        task.text,
+      );
+    }
   }
 
   @override

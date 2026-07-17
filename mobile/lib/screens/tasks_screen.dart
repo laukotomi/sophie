@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
 import 'package:sophie/events/app_logout_event.dart';
-import 'package:sophie/events/app_offline_data_change_event.dart';
+import 'package:sophie/events/app_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/events/task_sync_event.dart';
@@ -30,7 +33,7 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  late final TaskEventSubscription _taskEventSub;
+  late final EventSubscription<TaskEvent> _taskEventSub;
   late final AppEventSubscription _appEventSub;
 
   DateTime _focusedDay = DateTime.now();
@@ -65,6 +68,10 @@ class _TasksScreenState extends State<TasksScreen> {
 
       for (final event in events) {
         try {
+          if (!event.applied) {
+            await event.apply(widget.tasks, _safeSetState);
+          }
+
           await event.sync(widget.tasks, _safeSetState);
           await Storage.removeTaskEvent(event.eventId);
         } on UnauthorizedException {
@@ -89,16 +96,29 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future _handleTaskEvent(TaskEvent event) async {
-    await Storage.addTaskEvent(event);
     await event.apply(widget.tasks, _safeSetState);
+    event.applied = true;
 
-    await AppEventBus.instance.emit(AppOfflineDataChangeEvent());
+    await AppEventBus.instance.emit(AppDataChangeEvent());
     if (!widget.usingCache) {
       try {
-        await _syncTaskChanges();
+        await event.sync(widget.tasks, _safeSetState);
+        event.synced = true;
       } catch (e) {
-        // Ignore errors here; they will be handled in _syncTaskChanges.
+        await AppEventBus.instance.emit(
+          AppOfflineModeChangedEvent(offlineMode: true),
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error syncing task changes: $e')),
+          );
+        }
       }
+    }
+
+    if (Platform.isAndroid) {
+      await _pushTasksToWidget(widget.tasks);
     }
   }
 
@@ -112,6 +132,26 @@ class _TasksScreenState extends State<TasksScreen> {
     return widget.tasks
         .where((t) => t.dueAt != null && isSameDay(t.dueAt!, _selectedDay!))
         .toList();
+  }
+
+  static Future _pushTasksToWidget(List<Task> tasks) async {
+    final pending = tasks.where((t) => t.doneAt == null).toList();
+    final json = jsonEncode(
+      pending
+          .map(
+            (t) => {
+              'id': t.id,
+              'text': t.text,
+              'dueAt': t.dueAt?.toIso8601String(),
+              'color': t.color,
+            },
+          )
+          .toList(),
+    );
+    await HomeWidget.saveWidgetData<String>('tasks_json', json);
+    await HomeWidget.updateWidget(
+      qualifiedAndroidName: 'com.example.sophie.TasksWidgetReceiver',
+    );
   }
 
   @override

@@ -5,16 +5,9 @@ import 'package:sophie/events/task_saved_event.dart';
 import 'package:sophie/events/task_set_done_event.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/services/base_event.dart';
+import 'package:sophie/services/storage.dart';
 
-abstract class TaskEvent extends BaseEvent {
-  Future apply(List<Task> tasks, Function setState);
-  Future sync(List<Task> tasks, Function setState);
-
-  Map<String, dynamic> toJson() => {
-    'createdAt': createdAt.toIso8601String(),
-    'type': type,
-  };
-
+abstract class TaskEvent extends BaseEvent<Task> {
   static TaskEvent fromJson(Map<String, dynamic> json) {
     final event = switch (json['type'] as String) {
       'task_deleted' => TaskDeletedEvent.fromJson(json),
@@ -23,34 +16,20 @@ abstract class TaskEvent extends BaseEvent {
       _ => throw ArgumentError('Unknown event type: ${json['type']}'),
     };
 
-    if (json['createdAt'] != null) {
-      event.createdAt = DateTime.parse(json['createdAt'] as String);
-    }
+    BaseEvent.fromJson(event, json);
     return event;
   }
 }
 
-class TaskEventBus {
+class TaskEventBus extends BaseEventBus<TaskEvent> {
   static final TaskEventBus instance = TaskEventBus._();
   TaskEventBus._();
 
-  final _handlers = <Future Function(TaskEvent)>[];
-
-  TaskEventSubscription listen(Future Function(TaskEvent) handler) {
-    _handlers.add(handler);
-    return TaskEventSubscription._(_handlers, handler);
-  }
-
+  @override
   Future emit(TaskEvent event) async {
-    await Future.wait(_handlers.map((h) => h(event)));
+    await super.emit(event);
+    if (!event.synced) {
+      await Storage.addTaskEvent(event);
+    }
   }
-}
-
-class TaskEventSubscription {
-  final List<Future Function(TaskEvent)> _handlers;
-  final Future Function(TaskEvent) _handler;
-
-  TaskEventSubscription._(this._handlers, this._handler);
-
-  void cancel() => _handlers.remove(_handler);
 }

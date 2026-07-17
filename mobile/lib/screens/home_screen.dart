@@ -1,12 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:home_widget/home_widget.dart';
 import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_menu_changed_event.dart';
-import 'package:sophie/events/app_offline_data_change_event.dart';
+import 'package:sophie/events/app_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_conflict_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
@@ -14,7 +11,6 @@ import 'package:sophie/events/note_sync_event.dart';
 import 'package:sophie/events/task_sync_event.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/dashboard_data.dart';
-import 'package:sophie/models/task.dart';
 import 'package:sophie/screens/snooze_picker_screen.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend.dart';
@@ -67,32 +63,12 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  static Future _pushTasksToWidget(List<Task> tasks) async {
-    final pending = tasks.where((t) => t.doneAt == null).toList();
-    final json = jsonEncode(
-      pending
-          .map(
-            (t) => {
-              'id': t.id,
-              'text': t.text,
-              'dueAt': t.dueAt?.toIso8601String(),
-              'color': t.color,
-            },
-          )
-          .toList(),
-    );
-    await HomeWidget.saveWidgetData<String>('tasks_json', json);
-    await HomeWidget.updateWidget(
-      qualifiedAndroidName: 'com.example.sophie.TasksWidgetReceiver',
-    );
-  }
-
   Future _handleAppEvent(AppEvent event) async {
     switch (event) {
       case AppLogoutEvent():
         widget.onLoggedOut();
         break;
-      case AppOfflineDataChangeEvent():
+      case AppDataChangeEvent():
         await Storage.saveDashboardData(_currentData!);
         break;
       case AppOfflineModeChangedEvent():
@@ -114,31 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
         });
         break;
       case AppSyncEvent():
-        try {
-          await AppEventBus.instance.emit(NoteSyncEvent());
-          await AppEventBus.instance.emit(TaskSyncEvent());
-
-          setState(() {
-            _dataFuture = Future(() async {
-              final data = await _loadData();
-              final snooze = await Storage.tryGetPendingSnooze();
-              if (snooze != null) {
-                await navigatorKey.currentState?.push<void>(
-                  MaterialPageRoute(
-                    builder: (_) => SnoozePickerScreen(
-                      alarmId: snooze.alarmId,
-                      taskId: snooze.taskId,
-                      body: snooze.body,
-                    ),
-                  ),
-                );
-              }
-              return data;
-            });
-          });
-        } catch (e) {
-          //
-        }
+        _refresh();
         break;
     }
   }
@@ -146,12 +98,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<DashboardData> _loadData() async {
     DashboardData? data;
     try {
+      await AppEventBus.instance.emit(NoteSyncEvent());
+      await AppEventBus.instance.emit(TaskSyncEvent());
+
       data = await getIt<BackendClient>().getDashboardData();
       await AlertNotifications.rescheduleAll(data.tasks);
       await Storage.saveDashboardData(data);
-      if (Platform.isAndroid) {
-        await _pushTasksToWidget(data.tasks);
-      }
 
       if (mounted) setState(() => _usingCache = false);
       _currentData = data;
@@ -171,6 +123,19 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         getIt.registerSingleton(
           UserService(currentUserId: data.user.id, users: data.users),
+        );
+      }
+
+      final snooze = await Storage.tryGetPendingSnooze();
+      if (snooze != null) {
+        await navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => SnoozePickerScreen(
+              alarmId: snooze.alarmId,
+              taskId: snooze.taskId,
+              body: snooze.body,
+            ),
+          ),
         );
       }
     }

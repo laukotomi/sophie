@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:sophie/events/app_logout_event.dart';
-import 'package:sophie/events/app_offline_data_change_event.dart';
+import 'package:sophie/events/app_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
 import 'package:sophie/events/note_saved_event.dart';
@@ -30,7 +30,7 @@ class NotesScreen extends StatefulWidget {
 class _NotesScreenState extends State<NotesScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
-  late final NoteEventSubscription _noteEventSub;
+  late final EventSubscription<NoteEvent> _noteEventSub;
   late final AppEventSubscription _appEventSub;
 
   String? _selectedTag;
@@ -80,6 +80,10 @@ class _NotesScreenState extends State<NotesScreen> {
         }
 
         try {
+          if (!event.applied) {
+            await event.apply(widget.notes, _safeSetState);
+          }
+
           await event.sync(widget.notes, _safeSetState);
           await Storage.removeNoteEvent(event.eventId);
         } on UnauthorizedException {
@@ -108,15 +112,24 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   Future _handleNoteEvent(NoteEvent event) async {
-    await Storage.addNoteEvent(event);
     await event.apply(widget.notes, _safeSetState);
+    event.applied = true;
 
-    await AppEventBus.instance.emit(AppOfflineDataChangeEvent());
+    await AppEventBus.instance.emit(AppDataChangeEvent());
     if (!widget.usingCache) {
       try {
-        await _syncNoteChanges();
+        await event.sync(widget.notes, _safeSetState);
+        event.synced = true;
       } catch (e) {
-        // Ignore errors here; they will be handled in _syncTaskChanges.
+        await AppEventBus.instance.emit(
+          AppOfflineModeChangedEvent(offlineMode: true),
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error syncing note changes: $e')),
+          );
+        }
       }
     }
   }

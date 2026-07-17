@@ -6,15 +6,14 @@ import 'package:alarm/utils/alarm_set.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:sophie/events/app_sync_event.dart';
+import 'package:sophie/events/task_set_done_event.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/alert.dart';
 import 'package:sophie/models/scheduled_notification.dart';
 import 'package:sophie/models/task.dart';
-import 'package:sophie/services/app_events.dart';
-import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/snooze_picker_screen.dart';
 import 'package:sophie/services/storage.dart';
+import 'package:sophie/services/task_events.dart';
 
 /// Manages scheduling of task alert notifications.
 ///
@@ -129,7 +128,6 @@ class AlertNotifications {
         payload: {'alarmId': '$alarmId', 'taskId': taskId},
         autoDismissible: false,
         wakeUpScreen: true,
-        locked: true,
         actionType: ActionType.DisabledAction,
       ),
       schedule: NotificationCalendar.fromDate(
@@ -168,16 +166,10 @@ class AlertNotifications {
   /// Cancels all existing alarms (derived from the old cached data) then
   /// reschedules from [freshTasks]. Call this after every dashboard refresh.
   static Future rescheduleAll(List<Task> freshTasks) async {
-    // Cancel alarms for every previously tracked task, including ones that may
-    // have been deleted from the server since the last launch.
-    final cachedData = Storage.getTaskAlertsMap();
-    for (final taskId in cachedData.keys) {
-      final alerts = cachedData[taskId]!;
-      for (final alert in alerts) {
-        await _cancelByAlarmId(alert.id);
-      }
-    }
+    await Alarm.stopAll();
+    await AwesomeNotifications().cancelAll();
     await Storage.clearTaskAlertsMap();
+
     // Schedule fresh alarms for all pending tasks.
     for (final task in freshTasks.where((t) => t.doneAt == null)) {
       await scheduleAlerts(task.id, task.dueAt, task.alerts, task.text);
@@ -302,12 +294,12 @@ class AlertNotifications {
         importance: NotificationImportance.Max,
         playSound: false,
         enableVibration: false,
-        locked: true,
       ),
     ]);
 
     AwesomeNotifications().setListeners(
       onActionReceivedMethod: _onNotificationAction,
+      onDismissActionReceivedMethod: _onNotificationDismiss,
     );
   }
 
@@ -346,14 +338,31 @@ class AlertNotifications {
   }
 
   static Future _markTaskDone(String taskId) async {
-    final serverUrl = Storage.serverUrl;
-    final token = Storage.authToken;
-    if (serverUrl == null || token == null) return;
-
-    final client = BackendClient(baseUrl: serverUrl, token: token);
-
-    await client.task.setTaskDone(taskId, true);
     await cancelForTask(taskId);
-    await AppEventBus.instance.emit(AppSyncEvent());
+
+    final data = Storage.getDashboardData();
+    if (data == null) return;
+    final task = data.tasks.firstWhere((t) => t.id == taskId);
+    await TaskEventBus.instance.emit(TaskSetDoneEvent(done: true, task: task));
+  }
+
+  static Future _onNotificationDismiss(ReceivedAction action) async {
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: action.id!,
+        channelKey: _actionsChannelKey,
+        title: 'Sophie',
+        body: action.body,
+        payload: action.payload,
+        autoDismissible: false,
+        wakeUpScreen: true,
+        actionType: ActionType.DisabledAction,
+      ),
+      actionButtons: [
+        NotificationActionButton(key: _stopActionKey, label: 'Stop'),
+        NotificationActionButton(key: _doneActionKey, label: 'Mark done'),
+        NotificationActionButton(key: _snoozeActionKey, label: 'Snooze..'),
+      ],
+    );
   }
 }

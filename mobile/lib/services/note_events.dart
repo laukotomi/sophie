@@ -5,16 +5,9 @@ import 'package:sophie/events/note_file_deleted_event.dart';
 import 'package:sophie/events/note_saved_event.dart';
 import 'package:sophie/models/note.dart';
 import 'package:sophie/services/base_event.dart';
+import 'package:sophie/services/storage.dart';
 
-abstract class NoteEvent extends BaseEvent {
-  Map<String, dynamic> toJson() => {
-    'createdAt': createdAt.toIso8601String(),
-    'type': type,
-  };
-
-  Future apply(List<Note> notes, Function setState);
-  Future sync(List<Note> notes, Function setState);
-
+abstract class NoteEvent extends BaseEvent<Note> {
   static NoteEvent fromJson(Map<String, dynamic> json) {
     final event = switch (json['type'] as String) {
       'note_saved' => NoteSavedEvent.fromJson(json),
@@ -23,34 +16,20 @@ abstract class NoteEvent extends BaseEvent {
       _ => throw ArgumentError('Unknown event type: ${json['type']}'),
     };
 
-    if (json['createdAt'] != null) {
-      event.createdAt = DateTime.parse(json['createdAt'] as String);
-    }
+    BaseEvent.fromJson(event, json);
     return event;
   }
 }
 
-class NoteEventBus {
+class NoteEventBus extends BaseEventBus<NoteEvent> {
   static final NoteEventBus instance = NoteEventBus._();
   NoteEventBus._();
 
-  final _handlers = <Future Function(NoteEvent)>[];
-
-  NoteEventSubscription listen(Future Function(NoteEvent) handler) {
-    _handlers.add(handler);
-    return NoteEventSubscription._(_handlers, handler);
-  }
-
+  @override
   Future emit(NoteEvent event) async {
-    await Future.wait(_handlers.map((h) => h(event)));
+    super.emit(event);
+    if (!event.synced) {
+      await Storage.addNoteEvent(event);
+    }
   }
-}
-
-class NoteEventSubscription {
-  final List<Future Function(NoteEvent)> _handlers;
-  final Future Function(NoteEvent) _handler;
-
-  NoteEventSubscription._(this._handlers, this._handler);
-
-  void cancel() => _handlers.remove(_handler);
 }

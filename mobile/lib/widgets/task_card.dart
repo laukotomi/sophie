@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:sophie/events/task_set_done_event.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/screens/add_task_screen.dart';
-import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/task_events.dart';
 import 'package:sophie/utils/note_colors.dart';
 import 'package:sophie/widgets/note_chip.dart';
@@ -27,9 +26,6 @@ class _TaskCardState extends State<TaskCard> {
       await TaskEventBus.instance.emit(
         TaskSetDoneEvent(task: widget.task, done: markingDone),
       );
-      if (markingDone) {
-        await AlertNotifications.cancelForTask(widget.task.id);
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(

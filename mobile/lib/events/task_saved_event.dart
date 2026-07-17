@@ -4,6 +4,7 @@ import 'package:sophie/models/task.dart';
 import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/backend_task.dart';
 import 'package:sophie/services/task_events.dart';
+import 'package:sophie/utils/task_utils.dart';
 import 'package:uuid/uuid.dart';
 import 'package:collection/collection.dart';
 
@@ -105,17 +106,7 @@ class TaskSavedEvent extends TaskEvent {
     await AlertNotifications.scheduleAlerts(taskId, dueAt, alerts, text);
 
     setState(() {
-      tasks.sort((a, b) {
-        if (a.doneAt != null && b.doneAt == null) return 1;
-        if (a.doneAt == null && b.doneAt != null) return -1;
-        if (a.dueAt == null && b.dueAt != null) return -1;
-        if (a.dueAt != null && b.dueAt == null) return 1;
-        if (a.dueAt != null && b.dueAt != null) {
-          final dueDiff = a.dueAt!.compareTo(b.dueAt!);
-          if (dueDiff != 0) return dueDiff;
-        }
-        return b.createdAt.compareTo(a.createdAt);
-      });
+      TaskUtils.sortTasks(tasks);
     });
   }
 

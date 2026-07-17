@@ -6,7 +6,6 @@ import 'package:sophie/main.dart';
 import 'package:sophie/models/alert.dart';
 import 'package:sophie/models/app_user.dart';
 import 'package:sophie/models/task.dart';
-import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/task_events.dart';
 import 'package:sophie/services/user_service.dart';
 import 'package:sophie/dialogs/discard_dialog.dart';
