@@ -36,6 +36,8 @@ async function parseNoteForm(form: FormData | null): Promise<NoteFormData | null
         stream: f.stream(),
     }));
 
+    const timestamp = new Date(form.get('timestamp') as string);
+
     return {
         noteId,
         text,
@@ -45,6 +47,7 @@ async function parseNoteForm(form: FormData | null): Promise<NoteFormData | null
         dontFold,
         todoList,
         files: filesData.length > 0 ? filesData : undefined,
+        timestamp: isNaN(timestamp.getTime()) ? new Date() : timestamp
     };
 }
 

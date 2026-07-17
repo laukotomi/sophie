@@ -41,14 +41,25 @@ export async function editOrCreateNote(
 
                 await tx
                     .update(note)
-                    .set({ ...noteDbData, editingBy: null, lockedUntil: null })
+                    .set({
+                        editingBy: null,
+                        lockedUntil: null,
+                        updatedAt: noteData.timestamp,
+                        ...noteDbData
+                    })
                     .where(eq(note.id, noteData.noteId));
 
                 await tx.delete(collaborator).where(eq(collaborator.noteId, noteData.noteId));
             } else {
                 await tx
                     .insert(note)
-                    .values({ id: noteData.noteId, ...noteDbData, owner: userId });
+                    .values({
+                        id: noteData.noteId,
+                        createdAt: noteData.timestamp,
+                        updatedAt: noteData.timestamp,
+                        owner: userId,
+                        ...noteDbData,
+                    });
             }
 
             if (noteData.collaborators && noteData.collaborators.length > 0) {

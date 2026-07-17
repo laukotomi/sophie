@@ -315,6 +315,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
         noteId: _isEditing ? widget.existingNote!.id : null,
         text: _textController.text.trim(),
         todoList: _todoList,
+        hasLockAlready: !widget.offlineMode,
       );
       await NoteEventBus.instance.emit(event);
 

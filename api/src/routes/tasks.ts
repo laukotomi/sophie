@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { requireAuth, type AuthVariables } from '../middleware.js';
 import { deleteTask, deleteTaskGroup, editOrCreateTask, setTaskDone } from '../task_queries.js';
-import type { NextTaskInfo } from '../task_queries.js';
 import { parseDateISOString } from '../utils.js';
 import { TaskData, AlertInput } from '../models.js';
 
@@ -43,6 +42,7 @@ async function parseAlertsForm(body: any): Promise<TaskData | null> {
     }
 
     const recurringGroupId = typeof body.recurringGroupId === 'string' && body.recurringGroupId ? body.recurringGroupId : null;
+    const timestamp = new Date(body.timestamp);
 
     return {
         taskId: taskId.trim(),
@@ -52,7 +52,8 @@ async function parseAlertsForm(body: any): Promise<TaskData | null> {
         collaboratorIds,
         alerts,
         dueAt: body.dueAt,
-        recurringGroupId
+        recurringGroupId,
+        timestamp: isNaN(timestamp.getTime()) ? new Date() : timestamp
     };
 }
 
@@ -115,13 +116,17 @@ tasks.patch('/', async (c) => {
     if (!body || typeof body.taskId !== 'string' || !body.taskId.trim()) {
         return c.json({ error: 'taskId is required' }, 400);
     }
-    if (typeof body.done !== 'boolean') {
-        return c.json({ error: 'done (boolean) is required' }, 400);
+
+    let doneAt: Date | null = null;
+    if (typeof body.doneAt === 'string' && body.doneAt) {
+        doneAt = new Date(body.doneAt);
+        if (isNaN(doneAt.getTime())) {
+            return c.json({ error: 'doneAt is invalid' }, 400);
+        }
     }
 
-    let result: NextTaskInfo | null;
     try {
-        result = await setTaskDone(user.id, body.taskId, body.done);
+        await setTaskDone(user.id, body.taskId, doneAt);
     } catch (e) {
         console.error('[PATCH /api/tasks] setTaskDone failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -130,9 +135,6 @@ tasks.patch('/', async (c) => {
         return c.json({ error: message }, 500);
     }
 
-    if (result) {
-        return c.json({ nextTaskId: result.nextTaskId, nextDueAt: result.nextDueAt.toISOString() }, 200);
-    }
     return new Response(null, { status: 204 });
 });
 

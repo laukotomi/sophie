@@ -28,17 +28,22 @@ class BackendNote {
     required String noteId,
     required String text,
     required List<({String userId, String right})> collaborators,
-    int? fixedPosition,
-    String? color,
+    required int? fixedPosition,
+    required String? color,
     required bool dontFold,
     required bool todoList,
     required List<({String id, String path, String name})> files,
+    required DateTime timestamp,
   }) async {
     final request =
         http.MultipartRequest(method, Uri.parse('$baseUrl/api/notes'))
           ..headers.addAll(getHeaders(false))
-          ..fields['text'] = text;
-    request.fields['noteId'] = noteId;
+          ..fields['text'] = text
+          ..fields['timestamp'] = timestamp.toUtc().toIso8601String()
+          ..fields['noteId'] = noteId
+          ..fields['dontFold'] = dontFold.toString()
+          ..fields['todoList'] = todoList.toString();
+
     if (collaborators.isNotEmpty) {
       request.fields['collaborators'] = jsonEncode(
         collaborators
@@ -52,8 +57,7 @@ class BackendNote {
     if (color != null) {
       request.fields['color'] = color;
     }
-    request.fields['dontFold'] = dontFold.toString();
-    request.fields['todoList'] = todoList.toString();
+
     for (final file in files) {
       request.fields['fileIds'] = file.id;
       request.files.add(
@@ -79,6 +83,7 @@ class BackendNote {
       dontFold: event.dontFold,
       todoList: event.todoList,
       files: event.newFiles,
+      timestamp: event.createdAt,
     );
 
     final response = await http.Response.fromStream(

@@ -23,6 +23,7 @@ class NoteSavedEvent extends NoteEvent {
   final bool dontFold;
   final bool todoList;
   final List<({String id, String path, String name})> newFiles;
+  final bool hasLockAlready;
 
   NoteSavedEvent({
     String? noteId,
@@ -33,6 +34,7 @@ class NoteSavedEvent extends NoteEvent {
     required this.dontFold,
     required this.todoList,
     required this.newFiles,
+    this.hasLockAlready = false,
     bool? isNew,
   }) {
     this.isNew = isNew ?? noteId == null;
@@ -154,16 +156,12 @@ class NoteSavedEvent extends NoteEvent {
     final noteClient = getIt<BackendNote>();
     bool hadConflict = false;
 
-    if (!isNew) {
+    if (!isNew && !hasLockAlready) {
       final result = await noteClient.acquireNoteLock(noteId);
       hadConflict = !skipConflictCheck && createdAt.isBefore(result.updatedAt);
     }
 
     await noteClient.saveNote(this);
-
-    if (!isNew) {
-      await noteClient.releaseNoteLock(noteId);
-    }
 
     if (hadConflict) {
       await AppEventBus.instance.emit(AppSyncConflictEvent());

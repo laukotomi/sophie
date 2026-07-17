@@ -1,5 +1,4 @@
 import { pgTable, pgEnum, serial, integer, boolean, text, timestamp, time, uniqueIndex } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 import { user } from './auth.schema.js';
 
 export const noteRight = pgEnum('note_right', ['view', 'edit']);
@@ -13,8 +12,8 @@ export const note = pgTable('note', {
     owner: text('owner')
         .notNull()
         .references(() => user.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
     editingBy: text('editing_by').references(() => user.id, { onDelete: 'set null' }),
     lockedUntil: timestamp('locked_until', { withTimezone: true }),
 });
@@ -74,7 +73,8 @@ export const task = pgTable('task', {
     color: text('color'),
     dueAt: timestamp('due_at', { mode: 'string' }),
     doneAt: timestamp('done_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
     recurringGroupId: text('recurring_group_id'),
 });
 

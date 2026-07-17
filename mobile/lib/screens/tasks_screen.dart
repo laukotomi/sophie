@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -38,6 +38,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
+  int _pendingSyncs = 0;
 
   @override
   void initState() {
@@ -100,25 +101,33 @@ class _TasksScreenState extends State<TasksScreen> {
     event.applied = true;
 
     await AppEventBus.instance.emit(AppDataChangeEvent());
-    if (!widget.usingCache) {
-      try {
-        await event.sync(widget.tasks, _safeSetState);
-        event.synced = true;
-      } catch (e) {
-        await AppEventBus.instance.emit(
-          AppOfflineModeChangedEvent(offlineMode: true),
-        );
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error syncing task changes: $e')),
-          );
-        }
-      }
+    if (!widget.usingCache) {
+      _safeSetState(() => _pendingSyncs++);
+      unawaited(_syncEventInBackground(event));
     }
 
     if (Platform.isAndroid) {
       await _pushTasksToWidget(widget.tasks);
+    }
+  }
+
+  Future _syncEventInBackground(TaskEvent event) async {
+    try {
+      await event.sync(widget.tasks, _safeSetState);
+      event.synced = true;
+    } catch (e) {
+      await AppEventBus.instance.emit(
+        AppOfflineModeChangedEvent(offlineMode: true),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error syncing task changes: $e')),
+        );
+      }
+    } finally {
+      _safeSetState(() => _pendingSyncs--);
     }
   }
 
@@ -237,6 +246,15 @@ class _TasksScreenState extends State<TasksScreen> {
             ? Text('Tasks  •  ${DateFormat('MMM d').format(_selectedDay!)}')
             : const Text('Sophie Tasks'),
         actions: [
+          if (_pendingSyncs > 0)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
           if (widget.usingCache)
             Tooltip(
               message: 'Showing cached data — could not reach server',

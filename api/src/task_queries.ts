@@ -1,22 +1,7 @@
 import { db } from './db/index.js';
 import { task, taskCollaborator, taskAlert } from './db/schema.js';
-import { and, eq, isNull, isNotNull } from 'drizzle-orm';
-import rrulePkg from 'rrule';
-import { parseDateISOString } from './utils.js';
-import { AlertInput, TaskData } from './models.js';
-import { randomUUID } from 'crypto';
-const { RRule } = rrulePkg;
-
-function getNextOccurrence(rruleStr: string, currentDueAt: Date): Date | null {
-    try {
-        const normalized = rruleStr.startsWith('RRULE:') ? rruleStr : `RRULE:${rruleStr}`;
-        const rule = RRule.fromString(normalized);
-        const r = new RRule({ ...rule.origOptions, dtstart: currentDueAt });
-        return r.after(currentDueAt, false);
-    } catch {
-        return null;
-    }
-}
+import { and, eq } from 'drizzle-orm';
+import { TaskData } from './models.js';
 
 export async function editOrCreateTask(
     userId: string,
@@ -36,7 +21,10 @@ export async function editOrCreateTask(
     await db.transaction(async (tx) => {
         if (isEdit) {
             await tx.update(task)
-                .set(taskData)
+                .set({
+                    updatedAt: taskData.timestamp,
+                    ...taskDbData
+                })
                 .where(eq(task.id, taskData.taskId));
         }
         else {
@@ -44,6 +32,8 @@ export async function editOrCreateTask(
                 id: taskData.taskId,
                 owner: userId,
                 recurringGroupId: taskData.rrule ? (taskData.recurringGroupId ?? taskData.taskId) : null,
+                createdAt: taskData.timestamp,
+                updatedAt: taskData.timestamp,
                 ...taskDbData
             });
         }
@@ -81,54 +71,16 @@ export async function deleteTaskGroup(userId: string, taskId: string, groupId: s
     await db.delete(task).where(eq(task.recurringGroupId, groupId));
 }
 
-export type NextTaskInfo = { nextTaskId: string; nextDueAt: Date };
-
 export async function setTaskDone(
     userId: string,
     taskId: string,
-    done: boolean,
-): Promise<NextTaskInfo | null> {
-    const existing = await assertViewAccess(userId, taskId);
+    doneAt: Date | null,
+) {
+    await assertViewAccess(userId, taskId);
 
-    const updated = await db.update(task)
-        .set({ doneAt: done ? new Date() : null })
-        .where(and(eq(task.id, taskId), done ? isNull(task.doneAt) : isNotNull(task.doneAt)))
-        .returning({ id: task.id });
-
-    if (!updated.length || !done || !existing.rrule || !existing.dueAt) return null;
-
-    const nextDueAt = getNextOccurrence(existing.rrule, parseDateISOString(existing.dueAt));
-    if (!nextDueAt) return null;
-
-    const [collabs, alertRows] = await Promise.all([
-        db.select({ userId: taskCollaborator.userId })
-            .from(taskCollaborator)
-            .where(eq(taskCollaborator.taskId, taskId)),
-        db.select({ timeBefore: taskAlert.timeBefore })
-            .from(taskAlert)
-            .where(eq(taskAlert.taskId, taskId)),
-    ]);
-
-    const alerts: AlertInput[] = alertRows
-        .filter((a) => a.timeBefore !== null)
-        .map((a) => ({ type: 'relative' as const, timeBefore: a.timeBefore! }));
-
-    const taskData: TaskData = {
-        ...existing,
-        taskId: randomUUID(),
-        dueAt: nextDueAt.toISOString(),
-        collaboratorIds: collabs.map((c) => c.userId),
-        alerts,
-        recurringGroupId: existing.recurringGroupId ?? existing.id,
-    };
-
-    await editOrCreateTask(
-        existing.owner,
-        false,
-        taskData
-    );
-
-    return { nextTaskId: taskData.taskId, nextDueAt };
+    await db.update(task)
+        .set({ doneAt: doneAt })
+        .where(and(eq(task.id, taskId)));
 }
 
 async function assertEditAccess(userId: string, taskId: string) {
@@ -144,13 +96,7 @@ async function assertEditAccess(userId: string, taskId: string) {
 async function assertViewAccess(userId: string, taskId: string) {
     const [existing] = await db
         .select({
-            id: task.id,
             owner: task.owner,
-            text: task.text,
-            rrule: task.rrule,
-            dueAt: task.dueAt,
-            color: task.color,
-            recurringGroupId: task.recurringGroupId,
         })
         .from(task)
         .where(eq(task.id, taskId));

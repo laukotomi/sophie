@@ -7,6 +7,7 @@ export type NoteFormData = {
     dontFold: boolean;
     todoList: boolean;
     files: NoteFile[] | undefined;
+    timestamp: Date;
 };
 
 export type NoteFile = {
@@ -31,6 +32,7 @@ export type TaskData = {
     collaboratorIds: string[];
     alerts: AlertInput[];
     recurringGroupId: string | null;
+    timestamp: Date;
 }
 
 export type AlertInput =

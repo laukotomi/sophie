@@ -34,6 +34,7 @@ class _NotesScreenState extends State<NotesScreen> {
   late final AppEventSubscription _appEventSub;
 
   String? _selectedTag;
+  int _pendingSyncs = 0;
 
   // Matches #tag (word chars directly after #, no space — distinguishes from markdown headings)
   final _tagRegex = RegExp(
@@ -116,21 +117,29 @@ class _NotesScreenState extends State<NotesScreen> {
     event.applied = true;
 
     await AppEventBus.instance.emit(AppDataChangeEvent());
-    if (!widget.usingCache) {
-      try {
-        await event.sync(widget.notes, _safeSetState);
-        event.synced = true;
-      } catch (e) {
-        await AppEventBus.instance.emit(
-          AppOfflineModeChangedEvent(offlineMode: true),
-        );
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error syncing note changes: $e')),
-          );
-        }
+    if (!widget.usingCache) {
+      _safeSetState(() => _pendingSyncs++);
+      unawaited(_syncEventInBackground(event));
+    }
+  }
+
+  Future _syncEventInBackground(NoteEvent event) async {
+    try {
+      await event.sync(widget.notes, _safeSetState);
+      event.synced = true;
+    } catch (e) {
+      await AppEventBus.instance.emit(
+        AppOfflineModeChangedEvent(offlineMode: true),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error syncing note changes: $e')),
+        );
       }
+    } finally {
+      _safeSetState(() => _pendingSyncs--);
     }
   }
 
@@ -213,6 +222,15 @@ class _NotesScreenState extends State<NotesScreen> {
           ],
         ),
         actions: [
+          if (_pendingSyncs > 0)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
           if (widget.usingCache)
             Tooltip(
               message: 'Showing cached data — could not reach server',

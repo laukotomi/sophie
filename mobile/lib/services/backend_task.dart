@@ -17,30 +17,22 @@ class BackendTask {
     required this.timeout,
   });
 
-  Future<({String nextTaskId, DateTime nextDueAt})?> setTaskDone(
-    String taskId,
-    bool done,
-  ) async {
+  Future setTaskDone(String taskId, DateTime? doneAt) async {
     final response = await http
         .patch(
           Uri.parse('$baseUrl/api/tasks'),
           headers: getHeaders(true),
-          body: jsonEncode({'taskId': taskId, 'done': done}),
+          body: jsonEncode({
+            'taskId': taskId,
+            'doneAt': doneAt?.toUtc().toIso8601String(),
+          }),
         )
         .timeout(timeout);
 
     await checkUnauthorized(response.statusCode);
-    if (response.statusCode == 200) {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
-      return (
-        nextTaskId: json['nextTaskId'] as String,
-        nextDueAt: DateTime.parse(json['nextDueAt'] as String),
-      );
-    }
     if (response.statusCode != 204) {
       throw Exception('Failed to update task: ${response.statusCode}');
     }
-    return null;
   }
 
   Future deleteTask(String taskId) async {
@@ -78,6 +70,7 @@ class BackendTask {
     final body = jsonEncode({
       'taskId': event.taskId,
       'text': event.text,
+      'timestamp': event.createdAt.toUtc().toIso8601String(),
       if (event.rrule != null && event.rrule!.isNotEmpty) 'rrule': event.rrule,
       if (event.dueAt != null) 'dueAt': event.dueAt!.toIso8601String(),
       'color': event.color,
