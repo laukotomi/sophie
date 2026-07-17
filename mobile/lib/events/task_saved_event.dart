@@ -13,6 +13,7 @@ const _uuid = Uuid();
 class TaskSavedEvent extends TaskEvent {
   late final bool isNew;
   late final String taskId;
+  late final String? recurringGroupId;
   final String text;
   final String? rrule;
   final DateTime? dueAt;
@@ -28,10 +29,14 @@ class TaskSavedEvent extends TaskEvent {
     required this.color,
     required this.collaboratorIds,
     required this.alerts,
+    String? recurringGroupId,
     bool? isNew,
   }) {
     this.isNew = isNew ?? taskId == null;
     this.taskId = taskId ?? _uuid.v4();
+    this.recurringGroupId = rrule != null
+        ? recurringGroupId ?? this.taskId
+        : null;
   }
 
   @override
@@ -49,6 +54,7 @@ class TaskSavedEvent extends TaskEvent {
       'collaboratorIds': collaboratorIds,
       'alerts': alerts.map((a) => a.toJson()).toList(),
       'isNew': isNew,
+      'recurringGroupId': recurringGroupId,
     };
   }
 
@@ -66,6 +72,7 @@ class TaskSavedEvent extends TaskEvent {
           .map((a) => Alert.fromJson(a as Map<String, dynamic>))
           .toList(),
       isNew: m['isNew'] as bool,
+      recurringGroupId: m['recurringGroupId'] as String?,
     );
   }
 
@@ -83,7 +90,8 @@ class TaskSavedEvent extends TaskEvent {
         ..color = color
         ..dueAt = dueAt
         ..rrule = rrule
-        ..text = text;
+        ..text = text
+        ..recurringGroupId = recurringGroupId;
     } else {
       tasks.add(
         Task(
@@ -97,6 +105,7 @@ class TaskSavedEvent extends TaskEvent {
           isOwner: true,
           collaborators: collaboratorIds,
           alerts: alerts,
+          recurringGroupId: recurringGroupId,
         ),
       );
     }

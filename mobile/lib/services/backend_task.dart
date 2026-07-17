@@ -58,6 +58,21 @@ class BackendTask {
     }
   }
 
+  Future deleteTaskGroup(String taskId, String groupId) async {
+    final response = await http
+        .delete(
+          Uri.parse('$baseUrl/api/tasks/group'),
+          headers: getHeaders(true),
+          body: jsonEncode({'taskId': taskId, 'groupId': groupId}),
+        )
+        .timeout(timeout);
+
+    await checkUnauthorized(response.statusCode);
+    if (response.statusCode != 204) {
+      throw Exception('Failed to delete task group: ${response.statusCode}');
+    }
+  }
+
   /// Creates a new task when [taskId] is null, or updates an existing one.
   Future saveTask(TaskSavedEvent event) async {
     final body = jsonEncode({

@@ -30,6 +30,7 @@ export type TaskData = {
     dueAt: string;
     collaboratorIds: string[];
     alerts: AlertInput[];
+    recurringGroupId: string | null;
 }
 
 export type AlertInput =

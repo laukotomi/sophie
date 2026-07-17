@@ -60,6 +60,7 @@ dashboard.get('/', async (c) => {
                     doneAt: task.doneAt,
                     createdAt: task.createdAt,
                     ownerId: task.owner,
+                    recurringGroupId: task.recurringGroupId,
                 })
                 .from(task)
                 .where(and(
@@ -77,6 +78,7 @@ dashboard.get('/', async (c) => {
                     doneAt: task.doneAt,
                     createdAt: task.createdAt,
                     ownerId: task.owner,
+                    recurringGroupId: task.recurringGroupId,
                 })
                 .from(task)
                 .innerJoin(taskCollaborator, eq(taskCollaborator.taskId, task.id))

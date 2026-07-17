@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rrule_generator/rrule_generator.dart';
 import 'package:sophie/events/task_deleted_event.dart';
+import 'package:sophie/events/task_group_deleted_event.dart';
 import 'package:sophie/events/task_saved_event.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/alert.dart';
@@ -182,12 +183,12 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     }
   }
 
-  Future _delete() async {
+  Future _deleteSingle() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete task'),
-        content: const Text('This cannot be undone. Are you sure?'),
+        content: const Text('Delete this task? This cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -213,6 +214,46 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Failed to delete task: $e')));
+      }
+    }
+  }
+
+  Future _deleteGroup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete all in series'),
+        content: const Text(
+          'Delete all tasks in this recurring series? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _deleting = true);
+    try {
+      await TaskEventBus.instance.emit(
+        TaskGroupDeletedEvent(
+          taskId: widget.existingTask!.id,
+          groupId: widget.existingTask!.recurringGroupId!,
+        ),
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _deleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete task group: $e')),
+        );
       }
     }
   }
@@ -272,17 +313,46 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                 ),
               ),
             if (_isEditing)
-              IconButton(
-                icon: _deleting
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.delete_outline),
-                tooltip: 'Delete task',
-                onPressed: (_saving || _deleting) ? null : _delete,
-              ),
+              widget.existingTask!.recurringGroupId != null
+                  ? PopupMenuButton<String>(
+                      icon: _deleting
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.delete_outline),
+                      tooltip: 'Delete task',
+                      enabled: !(_saving || _deleting),
+                      onSelected: (choice) {
+                        if (choice == 'single') {
+                          _deleteSingle();
+                        } else if (choice == 'group') {
+                          _deleteGroup();
+                        }
+                      },
+                      itemBuilder: (BuildContext context) => [
+                        const PopupMenuItem<String>(
+                          value: 'single',
+                          child: Text('Delete this task only'),
+                        ),
+                        const PopupMenuItem<String>(
+                          value: 'group',
+                          child: Text('Delete all in series'),
+                        ),
+                      ],
+                    )
+                  : IconButton(
+                      icon: _deleting
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.delete_outline),
+                      tooltip: 'Delete task',
+                      onPressed: (_saving || _deleting) ? null : _deleteSingle,
+                    ),
             IconButton(
               icon: const Icon(Icons.settings_outlined),
               tooltip: 'Task settings',

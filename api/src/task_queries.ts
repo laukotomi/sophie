@@ -43,6 +43,7 @@ export async function editOrCreateTask(
             await tx.insert(task).values({
                 id: taskData.taskId,
                 owner: userId,
+                recurringGroupId: taskData.rrule ? (taskData.recurringGroupId ?? taskData.taskId) : null,
                 ...taskDbData
             });
         }
@@ -71,15 +72,13 @@ export async function editOrCreateTask(
 }
 
 export async function deleteTask(userId: string, taskId: string): Promise<void> {
-    const [existing] = await db
-        .select({ id: task.id, owner: task.owner })
-        .from(task)
-        .where(eq(task.id, taskId));
-
-    if (!existing) throw new Error('Task not found');
-    if (existing.owner !== userId) throw new Error('Forbidden');
-
+    await assertEditAccess(userId, taskId);
     await db.delete(task).where(eq(task.id, taskId));
+}
+
+export async function deleteTaskGroup(userId: string, taskId: string, groupId: string): Promise<void> {
+    await assertEditAccess(userId, taskId);
+    await db.delete(task).where(eq(task.recurringGroupId, groupId));
 }
 
 export type NextTaskInfo = { nextTaskId: string; nextDueAt: Date };
@@ -120,6 +119,7 @@ export async function setTaskDone(
         dueAt: nextDueAt.toISOString(),
         collaboratorIds: collabs.map((c) => c.userId),
         alerts,
+        recurringGroupId: existing.recurringGroupId ?? existing.id,
     };
 
     await editOrCreateTask(
@@ -150,6 +150,7 @@ async function assertViewAccess(userId: string, taskId: string) {
             rrule: task.rrule,
             dueAt: task.dueAt,
             color: task.color,
+            recurringGroupId: task.recurringGroupId,
         })
         .from(task)
         .where(eq(task.id, taskId));

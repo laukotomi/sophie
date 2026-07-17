@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { requireAuth, type AuthVariables } from '../middleware.js';
-import { deleteTask, editOrCreateTask, setTaskDone } from '../task_queries.js';
+import { deleteTask, deleteTaskGroup, editOrCreateTask, setTaskDone } from '../task_queries.js';
 import type { NextTaskInfo } from '../task_queries.js';
 import { parseDateISOString } from '../utils.js';
 import { TaskData, AlertInput } from '../models.js';
@@ -42,6 +42,8 @@ async function parseAlertsForm(body: any): Promise<TaskData | null> {
         }
     }
 
+    const recurringGroupId = typeof body.recurringGroupId === 'string' && body.recurringGroupId ? body.recurringGroupId : null;
+
     return {
         taskId: taskId.trim(),
         text: text.trim(),
@@ -50,6 +52,7 @@ async function parseAlertsForm(body: any): Promise<TaskData | null> {
         collaboratorIds,
         alerts,
         dueAt: body.dueAt,
+        recurringGroupId
     };
 }
 
@@ -145,6 +148,31 @@ tasks.delete('/', async (c) => {
         await deleteTask(user.id, body.taskId);
     } catch (e) {
         console.error('[DELETE /api/tasks] deleteTask failed:', e);
+        const message = e instanceof Error ? e.message : 'Unknown error';
+        if (message === 'Task not found') return c.json({ error: message }, 404);
+        if (message === 'Forbidden') return c.json({ error: message }, 403);
+        return c.json({ error: message }, 500);
+    }
+
+    return new Response(null, { status: 204 });
+});
+
+tasks.delete('/group', async (c) => {
+    const user = c.get('user');
+    const body = await c.req.json().catch(() => null);
+
+    if (!body || typeof body.taskId !== 'string' || !body.taskId.trim()) {
+        return c.json({ error: 'taskId is required' }, 400);
+    }
+
+    if (!body || typeof body.groupId !== 'string' || !body.groupId.trim()) {
+        return c.json({ error: 'groupId is required' }, 400);
+    }
+
+    try {
+        await deleteTaskGroup(user.id, body.taskId, body.groupId);
+    } catch (e) {
+        console.error('[DELETE /api/tasks/group] deleteTaskGroup failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
         if (message === 'Task not found') return c.json({ error: message }, 404);
         if (message === 'Forbidden') return c.json({ error: message }, 403);

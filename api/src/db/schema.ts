@@ -75,6 +75,7 @@ export const task = pgTable('task', {
     dueAt: timestamp('due_at', { mode: 'string' }),
     doneAt: timestamp('done_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    recurringGroupId: text('recurring_group_id'),
 });
 
 export const taskCollaborator = pgTable('task_collaborator', {

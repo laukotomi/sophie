@@ -11,18 +11,20 @@ class Task {
   final bool isOwner;
   List<String> collaborators;
   List<Alert> alerts;
+  String? recurringGroupId;
 
   Task({
     required this.id,
     required this.text,
-    this.rrule,
-    this.color,
-    this.dueAt,
-    this.doneAt,
+    required this.rrule,
+    required this.color,
+    required this.dueAt,
+    required this.doneAt,
     required this.createdAt,
     required this.isOwner,
     required this.collaborators,
     required this.alerts,
+    required this.recurringGroupId,
   });
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
@@ -44,6 +46,7 @@ class Task {
     alerts: (json['alerts'] as List<dynamic>)
         .map((a) => Alert.fromJson(a as Map<String, dynamic>))
         .toList(),
+    recurringGroupId: json['recurringGroupId'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -57,5 +60,6 @@ class Task {
     'isOwner': isOwner,
     'collaborators': collaborators,
     'alerts': alerts.map((a) => a.toJson()).toList(),
+    'recurringGroupId': recurringGroupId,
   };
 }
