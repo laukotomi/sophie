@@ -2,8 +2,8 @@ class ScheduledNotification {
   final int id;
   final String body;
   final DateTime scheduledDateTime;
-  final bool muted;
   final String taskId;
+  bool muted;
   bool rescheduled = false;
 
   ScheduledNotification({

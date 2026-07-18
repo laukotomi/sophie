@@ -61,7 +61,6 @@ class TaskSetDoneEvent extends TaskEvent {
         task.dueAt,
         task.alerts,
         task.text,
-        null,
       );
     }
 

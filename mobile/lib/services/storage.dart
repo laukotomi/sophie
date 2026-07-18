@@ -63,20 +63,31 @@ class Storage {
     final json = raw != null
         ? jsonDecode(raw) as Map<String, dynamic>
         : <String, dynamic>{};
+
     final map = <String, List<ScheduledNotification>>{};
+
     for (final entry in json.entries) {
       final taskId = entry.key;
       final list = (entry.value as List<dynamic>)
           .cast<Map<String, dynamic>>()
           .map(ScheduledNotification.fromJson)
           .toList();
+
       map[taskId] = list;
     }
+
     return map;
   }
 
-  static Future clearTaskAlertsMap() async {
-    await _saveTaskAlertsMap({});
+  static List<ScheduledNotification> getAllScheduledNotifications() {
+    final map = getTaskAlertsMap();
+    return map.values.expand((list) => list).toList();
+  }
+
+  static Future setTaskAlertsMap(
+    Map<String, List<ScheduledNotification>> map,
+  ) async {
+    await _prefs.setString(_taskAlertsMapKey, jsonEncode(map));
   }
 
   static List<ScheduledNotification> getTaskAlerts(String taskId) {
@@ -90,26 +101,26 @@ class Storage {
   ) async {
     final map = getTaskAlertsMap();
     map[taskId] = alerts;
-    await _saveTaskAlertsMap(map);
+    await setTaskAlertsMap(map);
   }
 
-  static Future updateTaskAlert(
-    String taskId,
-    int alarmId,
-    ScheduledNotification updated,
-  ) async {
+  static Future updateTaskAlerts(List<ScheduledNotification> alerts) async {
     final map = getTaskAlertsMap();
-    final alerts = map[taskId];
-    if (alerts == null) return;
-    final index = alerts.indexWhere((e) => e.id == alarmId);
-    if (index == -1) return;
-    alerts[index] = updated;
-    await _saveTaskAlertsMap(map);
+    for (final alert in alerts) {
+      final taskId = alert.taskId;
+      final taskAlerts = map[taskId];
+      if (taskAlerts == null) continue;
+
+      final index = taskAlerts.indexWhere((e) => e.id == alert.id);
+      if (index == -1) continue;
+      taskAlerts[index] = alert;
+    }
+    await setTaskAlertsMap(map);
   }
 
   static Future removeTaskAlerts(String taskId) async {
     final map = getTaskAlertsMap()..remove(taskId);
-    await _saveTaskAlertsMap(map);
+    await setTaskAlertsMap(map);
   }
 
   static Future removeTaskAlert(String taskId, int alarmId) async {
@@ -120,13 +131,7 @@ class Storage {
     if (alerts.isEmpty) {
       map.remove(taskId);
     }
-    await _saveTaskAlertsMap(map);
-  }
-
-  static Future _saveTaskAlertsMap(
-    Map<String, List<ScheduledNotification>> map,
-  ) async {
-    await _prefs.setString(_taskAlertsMapKey, jsonEncode(map));
+    await setTaskAlertsMap(map);
   }
 
   // ---------------------------------------------------------------------------

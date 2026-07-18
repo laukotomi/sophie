@@ -112,7 +112,7 @@ class TaskSavedEvent extends TaskEvent {
 
     // Schedule alerts for the newly spawned recurring task.
     // Only relative (timeBefore) alerts transfer; absolute ones would be past-dated.
-    await AlertNotifications.scheduleAlerts(taskId, dueAt, alerts, text, null);
+    await AlertNotifications.scheduleAlerts(taskId, dueAt, alerts, text);
 
     setState(() {
       TaskUtils.sortTasks(tasks);

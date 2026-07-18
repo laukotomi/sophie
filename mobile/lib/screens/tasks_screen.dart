@@ -283,9 +283,7 @@ class _TasksScreenState extends State<TasksScreen> {
             tooltip: 'Alert settings',
             onPressed: () async {
               await Navigator.of(context).push<void>(
-                MaterialPageRoute(
-                  builder: (_) => AlertManagerScreen(tasks: widget.tasks),
-                ),
+                MaterialPageRoute(builder: (_) => const AlertManagerScreen()),
               );
               setState(() {});
             },

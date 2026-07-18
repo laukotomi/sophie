@@ -2,14 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sophie/models/scheduled_notification.dart';
 import 'package:sophie/screens/snooze_picker_screen.dart';
-import 'package:sophie/models/task.dart';
 import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/storage.dart';
 
 class AlertManagerScreen extends StatefulWidget {
-  const AlertManagerScreen({super.key, required this.tasks});
-
-  final List<Task> tasks;
+  const AlertManagerScreen({super.key});
 
   @override
   State<AlertManagerScreen> createState() => _AlertManagerScreenState();
@@ -105,7 +102,7 @@ class _AlertManagerScreenState extends State<AlertManagerScreen> {
     setState(() => _loading = true);
     try {
       final until = DateTime.now().add(duration);
-      await AlertNotifications.muteUntil(until, widget.tasks);
+      await AlertNotifications.muteUntil(until);
     } finally {
       if (mounted) {
         setState(() {
@@ -119,7 +116,7 @@ class _AlertManagerScreenState extends State<AlertManagerScreen> {
   Future _cancelMute() async {
     setState(() => _loading = true);
     try {
-      await AlertNotifications.cancelMute(widget.tasks);
+      await AlertNotifications.cancelMute();
     } catch (_) {
     } finally {
       if (mounted) {

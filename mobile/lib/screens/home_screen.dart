@@ -102,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await AppEventBus.instance.emit(TaskSyncEvent());
 
       data = await getIt<BackendClient>().getDashboardData();
-      await AlertNotifications.rescheduleAll(data.tasks);
+      await AlertNotifications.refreshNotifications(data.tasks);
       await Storage.saveDashboardData(data);
 
       if (mounted) setState(() => _usingCache = false);
