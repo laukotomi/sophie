@@ -35,6 +35,11 @@ class AlertNotifications {
     }
   }
 
+  static Future clear() async {
+    await Alarm.stopAll();
+    await AwesomeNotifications().cancelAll();
+  }
+
   static Future<List<ScheduledNotification>> scheduleAlerts(
     String taskId,
     DateTime? taskDueAt,
@@ -105,9 +110,7 @@ class AlertNotifications {
         a.id: a.scheduledDateTime,
     };
 
-    await Alarm.stopAll();
-    await AwesomeNotifications().cancelAll();
-
+    await clear();
     Map<String, List<ScheduledNotification>> taskAlertsMap = {};
 
     // Schedule fresh alarms for all pending tasks.

@@ -121,7 +121,7 @@ tasks.patch('/', async (c) => {
     if (typeof body.doneAt === 'string' && body.doneAt) {
         doneAt = new Date(body.doneAt);
         if (isNaN(doneAt.getTime())) {
-            return c.json({ error: 'doneAt is invalid' }, 400);
+            doneAt = null;
         }
     }
 

@@ -64,16 +64,15 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future _syncTaskChanges() async {
     try {
-      final events = await Storage.getOfflineTaskEvents();
+      final events = Storage.getOfflineTaskEvents();
       if (events.isEmpty) return;
 
       for (final event in events) {
         try {
-          if (!event.applied) {
-            await event.apply(widget.tasks, _safeSetState);
+          if (!event.synced) {
+            await event.sync(widget.tasks, _safeSetState);
+            event.synced = true;
           }
-
-          await event.sync(widget.tasks, _safeSetState);
           await Storage.removeTaskEvent(event.eventId);
         } on UnauthorizedException {
           await Storage.removeTaskEvent(event.eventId);
@@ -97,6 +96,8 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future _handleTaskEvent(TaskEvent event) async {
+    if (event.applied) return;
+
     await event.apply(widget.tasks, _safeSetState);
     event.applied = true;
 
@@ -261,8 +262,7 @@ class _TasksScreenState extends State<TasksScreen> {
               child: IconButton(
                 icon: const Icon(Icons.cloud_off, color: Colors.orange),
                 onPressed: () async {
-                  final taskEvents = await Storage.getOfflineTaskEvents();
-                  if (!context.mounted) return;
+                  final taskEvents = Storage.getOfflineTaskEvents();
                   final events = taskEvents
                       .map<BaseEvent>((event) => event)
                       .toList();

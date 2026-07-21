@@ -197,7 +197,7 @@ class Storage {
     await _saveSnoozePendingList(list);
   }
 
-  static Future<PendingSnooze?> tryGetPendingSnooze() async {
+  static PendingSnooze? tryGetPendingSnooze() {
     final list = _getSnoozePendings();
     if (list.isEmpty) return null;
     return list[0];
@@ -206,7 +206,7 @@ class Storage {
   // ---------------------------------------------------------------------------
   // Offline note events queue
   // ---------------------------------------------------------------------------
-  static Future<List<NoteEvent>> getOfflineNoteEvents() async {
+  static List<NoteEvent> getOfflineNoteEvents() {
     final raw = _prefs.getString(_offlineNoteEventsKey);
     if (raw == null) return [];
     try {
@@ -227,22 +227,31 @@ class Storage {
   }
 
   static Future addNoteEvent(NoteEvent event) async {
-    final list = await getOfflineNoteEvents();
+    final list = getOfflineNoteEvents();
     list.add(event);
     await _saveOfflineNoteEvents(list);
   }
 
   static Future removeNoteEvent(int eventId) async {
-    final list = await getOfflineNoteEvents();
+    final list = getOfflineNoteEvents();
     list.removeWhere((e) => e.eventId == eventId);
     await _saveOfflineNoteEvents(list);
+  }
+
+  static Future updateNoteEvent(NoteEvent event) async {
+    final list = getOfflineNoteEvents();
+    final index = list.indexWhere((e) => e.eventId == event.eventId);
+    if (index != -1) {
+      list[index] = event;
+      await _saveOfflineNoteEvents(list);
+    }
   }
 
   // ---------------------------------------------------------------------------
   // Offline task events queue
   // ---------------------------------------------------------------------------
 
-  static Future<List<TaskEvent>> getOfflineTaskEvents() async {
+  static List<TaskEvent> getOfflineTaskEvents() {
     final raw = _prefs.getString(_offlineTaskEventsKey);
     if (raw == null) return [];
     try {
@@ -263,14 +272,23 @@ class Storage {
   }
 
   static Future addTaskEvent(TaskEvent event) async {
-    final list = await getOfflineTaskEvents();
+    final list = getOfflineTaskEvents();
     list.add(event);
     await _saveOfflineTaskEvents(list);
   }
 
   static Future removeTaskEvent(int eventId) async {
-    final list = await getOfflineTaskEvents();
+    final list = getOfflineTaskEvents();
     list.removeWhere((e) => e.eventId == eventId);
     await _saveOfflineTaskEvents(list);
+  }
+
+  static Future updateTaskEvent(TaskEvent event) async {
+    final list = getOfflineTaskEvents();
+    final index = list.indexWhere((e) => e.eventId == event.eventId);
+    if (index != -1) {
+      list[index] = event;
+      await _saveOfflineTaskEvents(list);
+    }
   }
 }

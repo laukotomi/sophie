@@ -16,6 +16,7 @@ export async function editOrCreateTask(
         rrule: taskData.rrule,
         dueAt: taskData.dueAt,
         color: taskData.color,
+        recurringGroupId: taskData.recurringGroupId,
     }
 
     await db.transaction(async (tx) => {
@@ -31,7 +32,6 @@ export async function editOrCreateTask(
             await tx.insert(task).values({
                 id: taskData.taskId,
                 owner: userId,
-                recurringGroupId: taskData.rrule ? (taskData.recurringGroupId ?? taskData.taskId) : null,
                 createdAt: taskData.timestamp,
                 updatedAt: taskData.timestamp,
                 ...taskDbData

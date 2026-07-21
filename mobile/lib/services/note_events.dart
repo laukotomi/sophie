@@ -26,6 +26,29 @@ class NoteEventBus extends BaseEventBus<NoteEvent> {
   NoteEventBus._();
 
   @override
+  EventSubscription<NoteEvent> listen(
+    Future<dynamic> Function(NoteEvent) handler,
+  ) {
+    final subscription = super.listen(handler);
+    _emitUnappliedEvents();
+    return subscription;
+  }
+
+  Future _emitUnappliedEvents() async {
+    final events = Storage.getOfflineNoteEvents();
+    for (final event in events) {
+      if (event.applied) continue;
+
+      await emit(event);
+      if (event.synced) {
+        await Storage.removeNoteEvent(event.eventId);
+      } else if (event.applied) {
+        await Storage.updateNoteEvent(event);
+      }
+    }
+  }
+
+  @override
   Future emit(NoteEvent event) async {
     super.emit(event);
     if (!event.synced) {

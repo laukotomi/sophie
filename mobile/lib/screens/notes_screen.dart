@@ -71,8 +71,9 @@ class _NotesScreenState extends State<NotesScreen> {
 
   Future _syncNoteChanges() async {
     try {
-      final events = await Storage.getOfflineNoteEvents();
+      final events = Storage.getOfflineNoteEvents();
       if (events.isEmpty) return;
+
       final seenSavedNoteIds = <String>{};
 
       for (final event in events) {
@@ -81,11 +82,10 @@ class _NotesScreenState extends State<NotesScreen> {
         }
 
         try {
-          if (!event.applied) {
-            await event.apply(widget.notes, _safeSetState);
+          if (!event.synced) {
+            await event.sync(widget.notes, _safeSetState);
+            event.synced = true;
           }
-
-          await event.sync(widget.notes, _safeSetState);
           await Storage.removeNoteEvent(event.eventId);
         } on UnauthorizedException {
           await Storage.removeNoteEvent(event.eventId);
@@ -113,6 +113,8 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   Future _handleNoteEvent(NoteEvent event) async {
+    if (event.applied) return;
+
     await event.apply(widget.notes, _safeSetState);
     event.applied = true;
 
@@ -237,8 +239,7 @@ class _NotesScreenState extends State<NotesScreen> {
               child: IconButton(
                 icon: const Icon(Icons.cloud_off, color: Colors.orange),
                 onPressed: () async {
-                  final noteEvents = await Storage.getOfflineNoteEvents();
-                  if (!context.mounted) return;
+                  final noteEvents = Storage.getOfflineNoteEvents();
                   final events = noteEvents
                       .map<BaseEvent>((event) => event)
                       .toList();

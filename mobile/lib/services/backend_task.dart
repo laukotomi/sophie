@@ -70,7 +70,6 @@ class BackendTask {
     final body = jsonEncode({
       'taskId': event.taskId,
       'text': event.text,
-      'timestamp': event.createdAt.toUtc().toIso8601String(),
       if (event.rrule != null && event.rrule!.isNotEmpty) 'rrule': event.rrule,
       if (event.dueAt != null) 'dueAt': event.dueAt!.toIso8601String(),
       'color': event.color,
@@ -90,6 +89,9 @@ class BackendTask {
                     },
             )
             .toList(),
+      if (event.recurringGroupId != null)
+        'recurringGroupId': event.recurringGroupId,
+      'timestamp': event.createdAt.toUtc().toIso8601String(),
     });
 
     final uri = Uri.parse('$baseUrl/api/tasks');

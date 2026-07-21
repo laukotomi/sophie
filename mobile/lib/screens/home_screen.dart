@@ -126,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      final snooze = await Storage.tryGetPendingSnooze();
+      final snooze = Storage.tryGetPendingSnooze();
       if (snooze != null) {
         await navigatorKey.currentState?.push(
           MaterialPageRoute(

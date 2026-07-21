@@ -67,6 +67,7 @@ class _MainAppState extends State<MainApp> {
   Future _onLoggedOut() async {
     await Storage.clear();
     getIt.reset();
+    AlertNotifications.clear();
     setState(() {
       _token = null;
     });
