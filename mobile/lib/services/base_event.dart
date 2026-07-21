@@ -32,14 +32,28 @@ abstract class BaseEvent<T> {
 abstract class BaseEventBus<T extends BaseEvent> {
   final handlers = <Future Function(T)>[];
 
+  List<T> get unappliedEvents;
+
+  void saveUnappliedEvent(T event);
+
   EventSubscription<T> listen(Future Function(T) handler) {
     handlers.add(handler);
+    _emitUnappliedEvents();
     return EventSubscription._(handlers, handler);
   }
 
-  @mustCallSuper
   Future emit(T event) async {
-    await Future.wait(handlers.map((h) => h(event)));
+    if (handlers.isEmpty) {
+      saveUnappliedEvent(event);
+    } else {
+      await Future.wait(handlers.map((h) => h(event)));
+    }
+  }
+
+  Future _emitUnappliedEvents() async {
+    for (final event in unappliedEvents) {
+      await emit(event);
+    }
   }
 }
 

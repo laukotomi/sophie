@@ -226,23 +226,23 @@ class Storage {
     );
   }
 
-  static Future addNoteEvent(NoteEvent event) async {
+  static Future addOrUpdateNoteEvent(NoteEvent event) async {
     final list = getOfflineNoteEvents();
-    list.add(event);
+    final index = list.indexWhere((e) => e.eventId == event.eventId);
+    if (index != -1) {
+      list[index] = event;
+    } else {
+      list.add(event);
+    }
     await _saveOfflineNoteEvents(list);
   }
 
   static Future removeNoteEvent(int eventId) async {
     final list = getOfflineNoteEvents();
+    final count = list.length;
     list.removeWhere((e) => e.eventId == eventId);
-    await _saveOfflineNoteEvents(list);
-  }
 
-  static Future updateNoteEvent(NoteEvent event) async {
-    final list = getOfflineNoteEvents();
-    final index = list.indexWhere((e) => e.eventId == event.eventId);
-    if (index != -1) {
-      list[index] = event;
+    if (list.length != count) {
       await _saveOfflineNoteEvents(list);
     }
   }
@@ -271,23 +271,23 @@ class Storage {
     );
   }
 
-  static Future addTaskEvent(TaskEvent event) async {
+  static Future addOrUpdateTaskEvent(TaskEvent event) async {
     final list = getOfflineTaskEvents();
-    list.add(event);
+    final index = list.indexWhere((e) => e.eventId == event.eventId);
+    if (index != -1) {
+      list[index] = event;
+    } else {
+      list.add(event);
+    }
     await _saveOfflineTaskEvents(list);
   }
 
   static Future removeTaskEvent(int eventId) async {
     final list = getOfflineTaskEvents();
+    final count = list.length;
     list.removeWhere((e) => e.eventId == eventId);
-    await _saveOfflineTaskEvents(list);
-  }
 
-  static Future updateTaskEvent(TaskEvent event) async {
-    final list = getOfflineTaskEvents();
-    final index = list.indexWhere((e) => e.eventId == event.eventId);
-    if (index != -1) {
-      list[index] = event;
+    if (list.length != count) {
       await _saveOfflineTaskEvents(list);
     }
   }

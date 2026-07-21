@@ -81,29 +81,34 @@ class _TasksScreenState extends State<TasksScreen> {
         }
       }
     } catch (e) {
-      await AppEventBus.instance.emit(
-        AppOfflineModeChangedEvent(offlineMode: true),
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error syncing task changes: $e')),
-        );
-      }
-
+      await _handleSyncError(e);
       rethrow;
     }
   }
 
+  Future _handleSyncError(Object e) async {
+    await AppEventBus.instance.emit(
+      AppOfflineModeChangedEvent(offlineMode: true),
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error syncing task changes: $e')));
+    }
+  }
+
   Future _handleTaskEvent(TaskEvent event) async {
-    if (event.applied) return;
+    if (!event.applied) {
+      await event.apply(widget.tasks, _safeSetState);
+      event.applied = true;
 
-    await event.apply(widget.tasks, _safeSetState);
-    event.applied = true;
+      await AppEventBus.instance.emit(AppDataChangeEvent());
+    }
 
-    await AppEventBus.instance.emit(AppDataChangeEvent());
-
-    if (!widget.usingCache) {
+    if (widget.usingCache) {
+      await Storage.addOrUpdateTaskEvent(event);
+    } else {
       _safeSetState(() => _pendingSyncs++);
       unawaited(_syncEventInBackground(event));
     }
@@ -115,18 +120,14 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future _syncEventInBackground(TaskEvent event) async {
     try {
-      await event.sync(widget.tasks, _safeSetState);
-      event.synced = true;
-    } catch (e) {
-      await AppEventBus.instance.emit(
-        AppOfflineModeChangedEvent(offlineMode: true),
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error syncing task changes: $e')),
-        );
+      if (!event.synced) {
+        await event.sync(widget.tasks, _safeSetState);
+        event.synced = true;
       }
+      await Storage.removeTaskEvent(event.eventId);
+    } catch (e) {
+      await Storage.addOrUpdateTaskEvent(event);
+      await _handleSyncError(e);
     } finally {
       _safeSetState(() => _pendingSyncs--);
     }

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:sophie/events/note_deleted_event.dart';
 import 'package:sophie/events/note_file_deleted_event.dart';
 import 'package:sophie/events/note_saved_event.dart';
@@ -26,33 +24,10 @@ class NoteEventBus extends BaseEventBus<NoteEvent> {
   NoteEventBus._();
 
   @override
-  EventSubscription<NoteEvent> listen(
-    Future<dynamic> Function(NoteEvent) handler,
-  ) {
-    final subscription = super.listen(handler);
-    _emitUnappliedEvents();
-    return subscription;
-  }
-
-  Future _emitUnappliedEvents() async {
-    final events = Storage.getOfflineNoteEvents();
-    for (final event in events) {
-      if (event.applied) continue;
-
-      await emit(event);
-      if (event.synced) {
-        await Storage.removeNoteEvent(event.eventId);
-      } else if (event.applied) {
-        await Storage.updateNoteEvent(event);
-      }
-    }
-  }
+  List<NoteEvent> get unappliedEvents => Storage.getOfflineNoteEvents();
 
   @override
-  Future emit(NoteEvent event) async {
-    super.emit(event);
-    if (!event.synced) {
-      await Storage.addNoteEvent(event);
-    }
+  void saveUnappliedEvent(NoteEvent event) {
+    Storage.addOrUpdateNoteEvent(event);
   }
 }

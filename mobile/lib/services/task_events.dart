@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:sophie/events/task_deleted_event.dart';
 import 'package:sophie/events/task_group_deleted_event.dart';
 import 'package:sophie/events/task_saved_event.dart';
@@ -28,33 +26,10 @@ class TaskEventBus extends BaseEventBus<TaskEvent> {
   TaskEventBus._();
 
   @override
-  EventSubscription<TaskEvent> listen(
-    Future<dynamic> Function(TaskEvent) handler,
-  ) {
-    final subscription = super.listen(handler);
-    _emitUnappliedEvents();
-    return subscription;
-  }
-
-  Future _emitUnappliedEvents() async {
-    final events = Storage.getOfflineTaskEvents();
-    for (final event in events) {
-      if (event.applied) continue;
-
-      await emit(event);
-      if (event.synced) {
-        await Storage.removeTaskEvent(event.eventId);
-      } else if (event.applied) {
-        await Storage.updateTaskEvent(event);
-      }
-    }
-  }
+  List<TaskEvent> get unappliedEvents => Storage.getOfflineTaskEvents();
 
   @override
-  Future emit(TaskEvent event) async {
-    await super.emit(event);
-    if (!event.synced) {
-      await Storage.addTaskEvent(event);
-    }
+  void saveUnappliedEvent(TaskEvent event) {
+    Storage.addOrUpdateTaskEvent(event);
   }
 }

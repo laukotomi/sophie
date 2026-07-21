@@ -94,17 +94,20 @@ class _NotesScreenState extends State<NotesScreen> {
         }
       }
     } catch (e) {
-      await AppEventBus.instance.emit(
-        AppOfflineModeChangedEvent(offlineMode: true),
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error syncing note changes: $e')),
-        );
-      }
-
+      await _handleSyncError(e);
       rethrow;
+    }
+  }
+
+  Future _handleSyncError(Object e) async {
+    await AppEventBus.instance.emit(
+      AppOfflineModeChangedEvent(offlineMode: true),
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error syncing note changes: $e')));
     }
   }
 
@@ -113,14 +116,16 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   Future _handleNoteEvent(NoteEvent event) async {
-    if (event.applied) return;
+    if (!event.applied) {
+      await event.apply(widget.notes, _safeSetState);
+      event.applied = true;
 
-    await event.apply(widget.notes, _safeSetState);
-    event.applied = true;
+      await AppEventBus.instance.emit(AppDataChangeEvent());
+    }
 
-    await AppEventBus.instance.emit(AppDataChangeEvent());
-
-    if (!widget.usingCache) {
+    if (widget.usingCache) {
+      await Storage.addOrUpdateNoteEvent(event);
+    } else {
       _safeSetState(() => _pendingSyncs++);
       unawaited(_syncEventInBackground(event));
     }
@@ -128,18 +133,14 @@ class _NotesScreenState extends State<NotesScreen> {
 
   Future _syncEventInBackground(NoteEvent event) async {
     try {
-      await event.sync(widget.notes, _safeSetState);
-      event.synced = true;
-    } catch (e) {
-      await AppEventBus.instance.emit(
-        AppOfflineModeChangedEvent(offlineMode: true),
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error syncing note changes: $e')),
-        );
+      if (!event.synced) {
+        await event.sync(widget.notes, _safeSetState);
+        event.synced = true;
       }
+      await Storage.removeNoteEvent(event.eventId);
+    } catch (e) {
+      await Storage.addOrUpdateNoteEvent(event);
+      await _handleSyncError(e);
     } finally {
       _safeSetState(() => _pendingSyncs--);
     }
