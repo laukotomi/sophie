@@ -196,6 +196,10 @@ dashboard.get('/', async (c) => {
             .sort((a, b) => {
                 if (a.doneAt && !b.doneAt) return 1;
                 if (!a.doneAt && b.doneAt) return -1;
+                if (a.doneAt && b.doneAt) {
+                    return a.doneAt.getTime() - b.doneAt.getTime();
+                }
+
                 if (!a.dueAt && b.dueAt) return -1;
                 if (a.dueAt && !b.dueAt) return 1;
                 if (a.dueAt && b.dueAt) {

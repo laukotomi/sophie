@@ -109,34 +109,38 @@ class NoteSavedEvent extends NoteEvent {
         return;
       }
 
-      note
-        ..updatedAt = DateTime.now()
-        ..position = fixedPosition
-        ..text = text
-        ..color = color
-        ..dontFold = dontFold
-        ..todoList = todoList
-        ..collaborators = collabs
-        ..files.addAll(newFiles);
+      setState(() {
+        note
+          ..updatedAt = DateTime.now()
+          ..position = fixedPosition
+          ..text = text
+          ..color = color
+          ..dontFold = dontFold
+          ..todoList = todoList
+          ..collaborators = collabs
+          ..files.addAll(newFiles);
+      });
     } else {
       final ownerId = getIt<UserService>().currentUserId;
-      notes.add(
-        Note(
-          collaborators: collabs,
-          createdAt: DateTime.now(),
-          id: noteId,
-          isOwner: true,
-          ownerId: ownerId,
-          right: 'owner',
-          text: text,
-          updatedAt: DateTime.now(),
-          color: color,
-          dontFold: dontFold,
-          position: fixedPosition,
-          todoList: todoList,
-          files: newFiles,
-        ),
-      );
+      setState(() {
+        notes.add(
+          Note(
+            collaborators: collabs,
+            createdAt: DateTime.now(),
+            id: noteId,
+            isOwner: true,
+            ownerId: ownerId,
+            right: 'owner',
+            text: text,
+            updatedAt: DateTime.now(),
+            color: color,
+            dontFold: dontFold,
+            position: fixedPosition,
+            todoList: todoList,
+            files: newFiles,
+          ),
+        );
+      });
     }
 
     setState(() {

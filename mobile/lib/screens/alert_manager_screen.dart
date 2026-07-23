@@ -23,12 +23,7 @@ class _AlertManagerScreenState extends State<AlertManagerScreen> {
   }
 
   List<ScheduledNotification> _loadAlerts() {
-    final taskAlertsMap = Storage.getTaskAlertsMap();
-    List<ScheduledNotification> alerts = [];
-    for (final taskId in taskAlertsMap.keys) {
-      final taskAlerts = taskAlertsMap[taskId]!;
-      alerts.addAll(taskAlerts);
-    }
+    final alerts = Storage.getAllScheduledNotifications();
     alerts.sort((a, b) => a.scheduledDateTime.compareTo(b.scheduledDateTime));
     return alerts;
   }

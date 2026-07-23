@@ -8,6 +8,8 @@ import { pipeline } from 'node:stream/promises';
 import { noteDirPath, noteFilePath } from './utils.js';
 import { NoteFormData } from './models.js';
 
+const noteHistoryLimit = 50;
+
 type Tx = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
 type Db = typeof db;
 type UploadedFile = { id: string; name: string; type: string; size: number };
@@ -255,7 +257,7 @@ async function saveNoteBackup(tx: Tx, noteId: string, text: string): Promise<voi
         .from(noteHistory)
         .where(eq(noteHistory.noteId, noteId))
         .orderBy(desc(noteHistory.createdAt))
-        .limit(10);
+        .limit(noteHistoryLimit);
 
     await tx
         .delete(noteHistory)

@@ -84,30 +84,34 @@ class TaskSavedEvent extends TaskEvent {
         return;
       }
 
-      task
-        ..alerts = alerts
-        ..collaborators = collaboratorIds
-        ..color = color
-        ..dueAt = dueAt
-        ..rrule = rrule
-        ..text = text
-        ..recurringGroupId = recurringGroupId;
+      setState(() {
+        task
+          ..alerts = alerts
+          ..collaborators = collaboratorIds
+          ..color = color
+          ..dueAt = dueAt
+          ..rrule = rrule
+          ..text = text
+          ..recurringGroupId = recurringGroupId;
+      });
     } else {
-      tasks.add(
-        Task(
-          id: taskId,
-          text: text,
-          rrule: rrule,
-          color: color,
-          dueAt: dueAt,
-          doneAt: null,
-          createdAt: DateTime.now(),
-          isOwner: true,
-          collaborators: collaboratorIds,
-          alerts: alerts,
-          recurringGroupId: recurringGroupId,
-        ),
-      );
+      setState(() {
+        tasks.add(
+          Task(
+            id: taskId,
+            text: text,
+            rrule: rrule,
+            color: color,
+            dueAt: dueAt,
+            doneAt: null,
+            createdAt: DateTime.now(),
+            isOwner: true,
+            collaborators: collaboratorIds,
+            alerts: alerts,
+            recurringGroupId: recurringGroupId,
+          ),
+        );
+      });
     }
 
     await AlertNotifications.scheduleAlerts(taskId, dueAt, alerts, text);

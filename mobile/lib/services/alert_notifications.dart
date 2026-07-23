@@ -307,7 +307,7 @@ class AlertNotifications {
         channelKey: _actionsChannelKey,
         channelName: 'Task alarm actions',
         channelDescription: 'Actions for active task alarms',
-        importance: NotificationImportance.Max,
+        importance: NotificationImportance.High,
         playSound: false,
         enableVibration: false,
       ),
@@ -327,10 +327,10 @@ class AlertNotifications {
     final taskId = action.payload?['taskId'];
     if (alarmId == null || taskId == null || action.body == null) return;
 
-    await Storage.removeTaskAlert(taskId, alarmId);
     await _cancelByAlarmId(alarmId);
 
     if (action.buttonKeyPressed == _stopActionKey) {
+      await Storage.removeTaskAlert(taskId, alarmId);
       return;
     }
 

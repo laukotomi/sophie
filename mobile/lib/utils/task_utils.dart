@@ -5,6 +5,10 @@ class TaskUtils {
     tasks.sort((a, b) {
       if (a.doneAt != null && b.doneAt == null) return 1;
       if (a.doneAt == null && b.doneAt != null) return -1;
+      if (a.doneAt != null && b.doneAt != null) {
+        return a.doneAt!.compareTo(b.doneAt!);
+      }
+
       if (a.dueAt == null && b.dueAt != null) return -1;
       if (a.dueAt != null && b.dueAt == null) return 1;
       if (a.dueAt != null && b.dueAt != null) {

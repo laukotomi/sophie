@@ -90,7 +90,17 @@ class _HomeScreenState extends State<HomeScreen> {
         });
         break;
       case AppSyncEvent():
-        _refresh();
+        setState(() {
+          _usingCache = false;
+          _dataFuture = () async {
+            final data = await _loadData();
+            if (!_usingCache) {
+              // This might not be necessary anymore
+              await AlertNotifications.refreshNotifications(data.tasks);
+            }
+            return data;
+          }();
+        });
         break;
     }
   }
@@ -102,7 +112,6 @@ class _HomeScreenState extends State<HomeScreen> {
       await AppEventBus.instance.emit(TaskSyncEvent());
 
       data = await getIt<BackendClient>().getDashboardData();
-      await AlertNotifications.refreshNotifications(data.tasks);
       await Storage.saveDashboardData(data);
 
       if (mounted) setState(() => _usingCache = false);
