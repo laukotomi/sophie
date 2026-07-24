@@ -19,9 +19,12 @@ export async function editOrCreateNote(
     isEdit: boolean,
     noteData: NoteFormData
 ) {
+    console.log(`START editOrCreateNote - userId: ${userId}, operation: ${isEdit ? 'edit' : 'create'}, noteId: ${noteData.noteId}`);
+
     // Upload files to disk before the transaction so we don't hold the DB
     // connection open during slow I/O. If the transaction later fails we clean up.
     const { uploadedFiles } = await uploadFiles(noteData.noteId, noteData.files);
+    console.log(`Uploaded ${uploadedFiles.length} files`);
 
     const noteDbData = {
         text: noteData.text,
@@ -34,9 +37,11 @@ export async function editOrCreateNote(
         await db.transaction(async (tx) => {
 
             if (isEdit) {
+                console.log(`Edit mode - checking access for noteId: ${noteData.noteId}`);
                 const existing = await assertEditAccess(tx, noteData.noteId, userId);
 
                 const holdsLock = existing.editingBy === userId;
+                console.log(`User holds lock: ${holdsLock}`);
                 if (!holdsLock) throw new Error('Lock required');
 
                 await saveNoteBackup(tx, noteData.noteId, existing.text);
@@ -109,7 +114,9 @@ export async function editOrCreateNote(
                 );
             }
         });
+        console.log(`Transaction committed successfully`);
     } catch (e) {
+        console.error(`Transaction failed:`, e);
         // Transaction failed — remove any files we already wrote to disk.
         if (uploadedFiles.length > 0) {
             await Promise.allSettled(
@@ -121,8 +128,10 @@ export async function editOrCreateNote(
 }
 
 export async function acquireNoteLock(userId: string, noteId: string) {
+    console.log(`START acquireNoteLock - userId: ${userId}, noteId: ${noteId}`);
     return db.transaction(async (tx) => {
         const existing = await assertEditAccess(tx, noteId, userId);
+        console.log(`Current lock state - editingBy: ${existing.editingBy}, lockedUntil: ${existing.lockedUntil}`);
 
         const now = new Date();
         const lockedUntil = new Date(now.getTime() + 60_000);
@@ -144,8 +153,11 @@ export async function acquireNoteLock(userId: string, noteId: string) {
                 .select({ editingBy: note.editingBy })
                 .from(note)
                 .where(eq(note.id, noteId));
+            console.error(`FAILED - Lock held by: ${locked?.editingBy ?? 'unknown'}`);
             throw new Error(`Locked:${locked?.editingBy ?? 'unknown'}`);
         }
+
+        console.log(`SUCCESS - Lock acquired for ${userId}`);
 
         return {
             text: existing.text,
@@ -155,13 +167,16 @@ export async function acquireNoteLock(userId: string, noteId: string) {
 }
 
 export async function releaseNoteLock(userId: string, noteId: string): Promise<void> {
+    console.log(`START releaseNoteLock - userId: ${userId}, noteId: ${noteId}`);
     await db
         .update(note)
         .set({ editingBy: null, lockedUntil: null })
         .where(and(eq(note.id, noteId), eq(note.editingBy, userId)));
+    console.log(`Lock released`);
 }
 
 export async function refreshNoteLock(userId: string, noteId: string): Promise<void> {
+    console.log(`START refreshNoteLock - userId: ${userId}, noteId: ${noteId}`);
     const lockedUntil = new Date(Date.now() + 60_000);
     const updated = await db
         .update(note)
@@ -169,50 +184,71 @@ export async function refreshNoteLock(userId: string, noteId: string): Promise<v
         .where(and(eq(note.id, noteId), eq(note.editingBy, userId)))
         .returning({ id: note.id });
 
-    if (updated.length === 0) throw new Error('Lock not held');
+    if (updated.length === 0) {
+        console.error(`FAILED - No lock held by user ${userId}`);
+        throw new Error('Lock not held');
+    }
+    console.log(`SUCCESS - Lock refreshed until ${lockedUntil.toISOString()}`);
 }
 
 export async function getNoteHistory(userId: string, noteId: string): Promise<Array<{ id: number; text: string; createdAt: Date }>> {
+    console.log(`START getNoteHistory - userId: ${userId}, noteId: ${noteId}`);
     await assertEditAccess(db, noteId, userId);
-    return db
+    const history = await db
         .select({ id: noteHistory.id, text: noteHistory.text, createdAt: noteHistory.createdAt })
         .from(noteHistory)
         .where(eq(noteHistory.noteId, noteId))
         .orderBy(desc(noteHistory.createdAt));
+    console.log(`Retrieved ${history.length} history entries`);
+    return history;
 }
 
 export async function deleteNote(userId: string, noteId: string): Promise<void> {
+    console.log(`START deleteNote - userId: ${userId}, noteId: ${noteId}`);
     const [existing] = await db
         .select({ id: note.id, owner: note.owner })
         .from(note)
         .where(eq(note.id, noteId));
 
-    if (!existing) throw new Error('Note not found');
-    if (existing.owner !== userId) throw new Error('Forbidden');
+    if (!existing) {
+        console.error(`FAILED - Note not found`);
+        throw new Error('Note not found');
+    }
+    if (existing.owner !== userId) {
+        console.error(`FAILED - Forbidden. Owner: ${existing.owner}, Requester: ${userId}`);
+        throw new Error('Forbidden');
+    }
 
     const files = await db
         .select({ id: noteFiles.id })
         .from(noteFiles)
         .where(eq(noteFiles.noteId, noteId));
 
+    console.log(`Deleting note with ${files.length} files`);
     await db.delete(note).where(eq(note.id, noteId));
 
     if (files.length > 0) {
         await rm(noteDirPath(noteId), { recursive: true, force: true });
     }
+    console.log(`SUCCESS - Note and files deleted`);
 }
 
 async function uploadFiles(
     noteId: string,
     files?: { id: string; name: string; type: string; size: number; stream: ReadableStream<Uint8Array> }[],
 ): Promise<{ uploadedFiles: UploadedFile[] }> {
-    if (!files || files.length === 0) return { uploadedFiles: [] };
+    if (!files || files.length === 0) {
+        console.log(`No files to upload`);
+        return { uploadedFiles: [] };
+    }
 
+    console.log(`Starting upload for ${files.length} files to noteId: ${noteId}`);
     const noteDir = noteDirPath(noteId);
     await mkdir(noteDir, { recursive: true });
 
     const uploadedFiles: UploadedFile[] = [];
     for (const file of files) {
+        console.log(`  → Uploading: ${file.name} (${file.size} bytes)`);
         await pipeline(
             Readable.fromWeb(file.stream as Parameters<typeof Readable.fromWeb>[0]),
             createWriteStream(noteFilePath(noteId, file.id)),
@@ -220,6 +256,7 @@ async function uploadFiles(
         uploadedFiles.push({ id: file.id, name: file.name, type: file.type, size: file.size });
     }
 
+    console.log(`All ${uploadedFiles.length} files uploaded successfully`);
     return { uploadedFiles };
 }
 
@@ -233,23 +270,31 @@ async function assertEditAccess(
         .from(note)
         .where(eq(note.id, noteId));
 
-    if (!existing) throw new Error('Note not found');
+    if (!existing) {
+        console.error(`Note not found: ${noteId}`);
+        throw new Error('Note not found');
+    }
 
     const isOwner = existing.owner === userId;
+
     if (!isOwner) {
         const [collab] = await tx
             .select({ right: collaborator.right })
             .from(collaborator)
             .where(and(eq(collaborator.noteId, noteId), eq(collaborator.userId, userId)));
+
         if (!collab || collab.right !== 'edit') {
+            console.error(`Access denied - No edit permission for user ${userId} on note ${noteId}`);
             throw new Error('Forbidden');
         }
+        console.log(`Access allowed - Collaborator with edit right`);
     }
 
     return existing;
 }
 
 async function saveNoteBackup(tx: Tx, noteId: string, text: string): Promise<void> {
+    console.log(`Creating backup for noteId: ${noteId}`);
     await tx.insert(noteHistory).values({ noteId, text });
 
     const toKeep = await tx
@@ -258,6 +303,8 @@ async function saveNoteBackup(tx: Tx, noteId: string, text: string): Promise<voi
         .where(eq(noteHistory.noteId, noteId))
         .orderBy(desc(noteHistory.createdAt))
         .limit(noteHistoryLimit);
+
+    console.log(`  → Keeping ${toKeep.length} of ${noteHistoryLimit} history entries`);
 
     await tx
         .delete(noteHistory)
