@@ -49,16 +49,6 @@ class _NoteCardState extends State<NoteCard> {
     });
   }
 
-  // @override
-  // void didUpdateWidget(NoteCard old) {
-  //   super.didUpdateWidget(old);
-  //   if (old.scrollController != widget.scrollController) {
-  //     old.scrollController.removeListener(_onScroll);
-  //     widget.scrollController.addListener(_onScroll);
-  //   }
-  //   _onScroll();
-  // }
-
   @override
   void dispose() {
     widget.scrollController.removeListener(_onScroll);
@@ -280,21 +270,7 @@ class _NoteCardState extends State<NoteCard> {
   Widget _buildNoteBody() {
     final content = widget.note.todoList
         ? _buildTodoListBody()
-        : SelectionArea(
-            child: MarkdownBody(
-              data: _preserveBlankLines(widget.note.text),
-              softLineBreak: true,
-              styleSheet: _headingStyleSheet,
-              onTapLink: (_, href, _) {
-                if (href != null) {
-                  launchUrl(
-                    Uri.parse(href),
-                    mode: LaunchMode.externalApplication,
-                  );
-                }
-              },
-            ),
-          );
+        : _buildTextSegment(widget.note.text);
 
     if (widget.note.dontFold) {
       return content;
@@ -427,23 +403,52 @@ class _NoteCardState extends State<NoteCard> {
           return const SizedBox(height: 16);
         } else {
           final textSeg = segment as _TextSegment;
-          return SelectionArea(
-            child: MarkdownBody(
-              data: _preserveBlankLines(textSeg.text),
-              softLineBreak: true,
-              styleSheet: _headingStyleSheet,
-              onTapLink: (_, href, _) {
-                if (href != null) {
-                  launchUrl(
-                    Uri.parse(href),
-                    mode: LaunchMode.externalApplication,
-                  );
-                }
-              },
-            ),
-          );
+          return _buildTextSegment(textSeg.text);
         }
       }).toList(),
+    );
+  }
+
+  // Matches Hungarian phone numbers: +36, 0036, or 06 followed by 9 digits,
+  // with optional spaces, dashes, or slashes between digit groups.
+  static final _huPhoneRegex = RegExp(
+    r'(\+36|0036|06)((?:[ /\-]?\d){9})(?!\w)',
+  );
+
+  // Matches email addresses
+  static final _emailRegex = RegExp(r'[\w\.\-+]+@[\w\.\-]+\.\w{2,}');
+
+  String _linkifyPhoneNumbers(String text) {
+    return text.replaceAllMapped(_huPhoneRegex, (match) {
+      final raw = match[0]!;
+      final digits = match[2]!.replaceAll(RegExp(r'[ /\-]'), '');
+      return '[$raw](tel:+36$digits)';
+    });
+  }
+
+  String _linkifyEmails(String text) {
+    return text.replaceAllMapped(_emailRegex, (match) {
+      final email = match[0]!;
+      return '[$email](mailto:$email)';
+    });
+  }
+
+  Widget _buildTextSegment(String text) {
+    text = _preserveBlankLines(text);
+    text = _linkifyPhoneNumbers(text);
+    text = _linkifyEmails(text);
+
+    return SelectionArea(
+      child: MarkdownBody(
+        data: text,
+        softLineBreak: true,
+        styleSheet: _headingStyleSheet,
+        onTapLink: (_, href, _) {
+          if (href != null) {
+            launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+          }
+        },
+      ),
     );
   }
 

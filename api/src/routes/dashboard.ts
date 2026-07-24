@@ -197,7 +197,7 @@ dashboard.get('/', async (c) => {
                 if (a.doneAt && !b.doneAt) return 1;
                 if (!a.doneAt && b.doneAt) return -1;
                 if (a.doneAt && b.doneAt) {
-                    return a.doneAt.getTime() - b.doneAt.getTime();
+                    return b.doneAt.getTime() - a.doneAt.getTime();
                 }
 
                 if (!a.dueAt && b.dueAt) return -1;

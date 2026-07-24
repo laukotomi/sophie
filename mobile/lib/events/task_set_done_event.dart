@@ -8,12 +8,12 @@ import 'package:sophie/services/task_events.dart';
 import 'package:sophie/utils/task_utils.dart';
 
 class TaskSetDoneEvent extends TaskEvent {
-  final Task task;
+  final String taskId;
   final DateTime? doneAt;
   TaskSavedEvent? nextTaskEvent;
 
   TaskSetDoneEvent({
-    required this.task,
+    required this.taskId,
     required this.doneAt,
     this.nextTaskEvent,
   });
@@ -25,7 +25,7 @@ class TaskSetDoneEvent extends TaskEvent {
   Map<String, dynamic> toJson() {
     return {
       ...super.toJson(),
-      'task': task.toJson(),
+      'taskId': taskId,
       'doneAt': doneAt?.toIso8601String(),
       'nextTaskEvent': nextTaskEvent?.toJson(),
     };
@@ -33,7 +33,7 @@ class TaskSetDoneEvent extends TaskEvent {
 
   factory TaskSetDoneEvent.fromJson(Map<String, dynamic> m) {
     return TaskSetDoneEvent(
-      task: Task.fromJson(m['task'] as Map<String, dynamic>),
+      taskId: m['taskId'] as String,
       doneAt: m['doneAt'] != null
           ? DateTime.parse(m['doneAt'] as String)
           : null,
@@ -46,7 +46,7 @@ class TaskSetDoneEvent extends TaskEvent {
   @override
   Future apply(List<Task> tasks, Function setState) async {
     final task = tasks.firstWhere(
-      (t) => t.id == this.task.id,
+      (t) => t.id == taskId,
     ); // required because this task can be initialized from notification event
     setState(() {
       task.doneAt = doneAt;
@@ -114,7 +114,7 @@ class TaskSetDoneEvent extends TaskEvent {
 
   @override
   Future sync(List<Task> tasks, Function setState) async {
-    await getIt<BackendTask>().setTaskDone(task.id, task.doneAt);
+    await getIt<BackendTask>().setTaskDone(taskId, doneAt);
     if (nextTaskEvent != null) {
       await nextTaskEvent!.sync(tasks, setState);
       nextTaskEvent!.synced = true;

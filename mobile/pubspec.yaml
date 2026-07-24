@@ -11,7 +11,7 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  file_picker: ^10.3.10
+  file_picker: ^11.0.2
   flutter_launcher_icons: ^0.14.4
   flutter_timezone: ^5.0.2
   timezone: ^0.11.0
@@ -21,12 +21,12 @@ dependencies:
   path_provider: ^2.1.5
   shared_preferences: ^2.5.5
   url_launcher: ^6.3.2
-  rrule_generator: ^0.9.9
+  rrule_generator: ^0.10.1+1
   table_calendar: ^3.2.0
   permission_handler: ^12.0.1
   alarm: ^5.2.1
   home_widget: ^0.9.3
-  awesome_notifications: ^0.11.0
+  awesome_notifications: ^0.12.1
   get_it: ^9.2.1
   uuid: ^4.5.3
   collection: ^1.19.1
@@ -40,8 +40,8 @@ dev_dependencies:
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: false
-  image_path: "assets/cony.webp"
-  adaptive_icon_foreground: "assets/cony.webp"
+  image_path: "assets/bunny.png"
+  adaptive_icon_foreground: "assets/bunny.png"
   adaptive_icon_background: "#ffffff"
 
 flutter:

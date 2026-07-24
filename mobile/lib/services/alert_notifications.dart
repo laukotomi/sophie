@@ -329,39 +329,32 @@ class AlertNotifications {
 
     await _cancelByAlarmId(alarmId);
 
-    if (action.buttonKeyPressed == _stopActionKey) {
-      await Storage.removeTaskAlert(taskId, alarmId);
-      return;
-    }
+    switch (action.buttonKeyPressed) {
+      case _stopActionKey:
+        await Storage.removeTaskAlert(taskId, alarmId);
+        break;
 
-    if (action.buttonKeyPressed == _snoozeActionKey) {
-      await Storage.addSnoozePending(alarmId, taskId, action.body!);
-      await navigatorKey.currentState?.push<void>(
-        MaterialPageRoute(
-          builder: (_) => SnoozePickerScreen(
-            alarmId: alarmId,
-            taskId: taskId,
-            body: action.body!,
+      case _snoozeActionKey:
+        await Storage.addSnoozePending(alarmId, taskId, action.body!);
+        await navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => SnoozePickerScreen(
+              alarmId: alarmId,
+              taskId: taskId,
+              body: action.body!,
+            ),
           ),
-        ),
-      );
-      return;
+        );
+        break;
+
+      case _doneActionKey:
+        await cancelForTask(taskId);
+        await TaskEventBus.instance.emit(
+          TaskSetDoneEvent(doneAt: DateTime.now(), taskId: taskId),
+        );
+
+        break;
     }
-
-    if (action.buttonKeyPressed == _doneActionKey) {
-      await _markTaskDone(taskId);
-    }
-  }
-
-  static Future _markTaskDone(String taskId) async {
-    await cancelForTask(taskId);
-
-    final data = Storage.getDashboardData();
-    if (data == null) return;
-    final task = data.tasks.firstWhere((t) => t.id == taskId);
-    await TaskEventBus.instance.emit(
-      TaskSetDoneEvent(doneAt: DateTime.now(), task: task),
-    );
   }
 
   static Future _onNotificationDismiss(ReceivedAction action) async {

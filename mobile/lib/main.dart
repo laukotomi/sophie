@@ -15,11 +15,14 @@ final navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   final locale = Platform.localeName; // e.g. 'hu_HU'
   Intl.defaultLocale = locale;
   await initializeDateFormatting(locale);
+
   await Storage.init();
   await AlertNotifications.init();
+
   runApp(
     MainApp(
       initialToken: Storage.authToken,
@@ -83,10 +86,7 @@ class _MainAppState extends State<MainApp> {
       locale: Locale(Platform.localeName.split('_').first),
       builder: (context, child) => SafeArea(child: child!),
       home: _token == null
-          ? LoginScreen(
-              initialServerUrl: widget.initialServerUrl,
-              onLoggedIn: _onLoggedIn,
-            )
+          ? LoginScreen(onLoggedIn: _onLoggedIn)
           : HomeScreen(onLoggedOut: _onLoggedOut),
     );
   }

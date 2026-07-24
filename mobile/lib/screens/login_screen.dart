@@ -3,14 +3,9 @@ import 'package:sophie/services/backend.dart';
 import 'package:sophie/services/storage.dart';
 
 class LoginScreen extends StatefulWidget {
-  final String? initialServerUrl;
   final void Function(String token, String serverUrl) onLoggedIn;
 
-  const LoginScreen({
-    super.key,
-    this.initialServerUrl,
-    required this.onLoggedIn,
-  });
+  const LoginScreen({super.key, required this.onLoggedIn});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -29,9 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _serverUrlController = TextEditingController(
-      text: widget.initialServerUrl ?? '',
-    );
+    _serverUrlController = TextEditingController(text: Storage.serverUrl ?? '');
   }
 
   @override

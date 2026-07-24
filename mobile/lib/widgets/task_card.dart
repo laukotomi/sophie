@@ -25,7 +25,7 @@ class _TaskCardState extends State<TaskCard> {
     try {
       await TaskEventBus.instance.emit(
         TaskSetDoneEvent(
-          task: widget.task,
+          taskId: widget.task.id,
           doneAt: markingDone ? DateTime.now() : null,
         ),
       );

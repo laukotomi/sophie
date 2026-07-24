@@ -6,7 +6,7 @@ class TaskUtils {
       if (a.doneAt != null && b.doneAt == null) return 1;
       if (a.doneAt == null && b.doneAt != null) return -1;
       if (a.doneAt != null && b.doneAt != null) {
-        return a.doneAt!.compareTo(b.doneAt!);
+        return b.doneAt!.compareTo(a.doneAt!);
       }
 
       if (a.dueAt == null && b.dueAt != null) return -1;

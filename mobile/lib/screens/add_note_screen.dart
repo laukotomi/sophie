@@ -182,7 +182,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   }
 
   Future _openAddFile() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    final result = await FilePicker.pickFiles(allowMultiple: true);
     if (result == null || result.files.isEmpty) return;
     final newFiles = result.files.where((f) => f.path != null);
     if (!mounted) return;
