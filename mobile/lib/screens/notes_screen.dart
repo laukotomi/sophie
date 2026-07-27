@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:sophie/events/app_check_for_changes_event.dart';
 import 'package:sophie/events/app_logout_event.dart';

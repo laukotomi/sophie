@@ -124,7 +124,6 @@ class _NoteCardState extends State<NoteCard> {
     }
 
     if (!ctx.mounted) return;
-    final noteTextBackup = widget.note.text;
     widget.note.text = widget.note.todoList && _checkedItems.isNotEmpty
         ? _removeCheckedItems(latestText)
         : latestText;
@@ -144,8 +143,10 @@ class _NoteCardState extends State<NoteCard> {
 
     if (result == true) {
       setState(() => _checkedItems.clear());
-    } else {
-      widget.note.text = noteTextBackup;
+    } else if (mounted) {
+      setState(() {
+        widget.note.text = latestText;
+      });
     }
   }
 
@@ -380,7 +381,7 @@ class _NoteCardState extends State<NoteCard> {
   String _removeCheckedItems(String text) {
     final lines = text.split('\n');
     final filtered = lines.where((line) {
-      final match = RegExp(r'^-\s+(.+)$').firstMatch(line);
+      final match = _listRegex.firstMatch(line);
       return match == null || !_checkedItems.contains(match.group(1));
     });
     return filtered.join('\n');
@@ -445,6 +446,8 @@ class _NoteCardState extends State<NoteCard> {
     );
   }
 
+  static final _listRegex = RegExp(r'^-\s+(.+)\s*$');
+
   // Matches Hungarian phone numbers: +36, 0036, or 06 followed by 9 digits,
   // with optional spaces, dashes, or slashes between digit groups.
   static final _huPhoneRegex = RegExp(
@@ -508,7 +511,7 @@ class _NoteCardState extends State<NoteCard> {
     }
 
     for (final line in lines) {
-      final match = RegExp(r'^-\s+(.+)\s*$').firstMatch(line);
+      final match = _listRegex.firstMatch(line);
       if (match != null) {
         flushBuffer();
         segments.add(_ListItemSegment(match.group(1)!));
