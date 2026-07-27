@@ -55,24 +55,16 @@ class AlertNotifications {
     final mutedUntil = Storage.mutedUntil;
 
     for (final alert in alerts) {
-      DateTime? fireAt = _resolveFireAt(alert, taskDueAt);
+      final fireAt = _resolveFireAt(alert, taskDueAt);
       if (fireAt == null || !fireAt.isAfter(now)) continue;
 
       final alarmId = _notifId(taskId, notifications.length);
-      final rescheduledAt =
-          rescheduledAlarms != null && rescheduledAlarms.containsKey(alarmId)
-          ? rescheduledAlarms[alarmId]
-          : null;
-
-      if (rescheduledAt != null) {
-        // This alert was snoozed and rescheduled by the user. Use the new time.
-        fireAt = rescheduledAt;
-      }
-
+      final rescheduledAt = rescheduledAlarms?[alarmId];
       final muted = mutedUntil != null && !fireAt.isAfter(mutedUntil);
+
       final notification = await _setAlarmAt(
         alarmId,
-        fireAt,
+        rescheduledAt ?? fireAt,
         taskId,
         text,
         alertType: muted ? AlertTypes.notification : AlertTypes.both,
@@ -97,7 +89,18 @@ class AlertNotifications {
     String text,
   ) async {
     await _cancelByAlarmId(alarmId);
-    final notification = await _setAlarmAt(alarmId, fireAt, taskId, text);
+
+    final muted =
+        Storage.mutedUntil != null && !fireAt.isAfter(Storage.mutedUntil!);
+
+    final notification = await _setAlarmAt(
+      alarmId,
+      fireAt,
+      taskId,
+      text,
+      alertType: muted ? AlertTypes.notification : AlertTypes.both,
+    );
+
     notification.rescheduled = true;
     await Storage.updateTaskAlerts([notification]);
   }
@@ -170,7 +173,7 @@ class AlertNotifications {
     for (final alert in alerts) {
       if (!alert.muted) continue;
 
-      final notification = await _setAlarmAt(
+      await _setAlarmAt(
         alert.id,
         alert.scheduledDateTime,
         alert.taskId,
@@ -178,7 +181,8 @@ class AlertNotifications {
         alertType: AlertTypes.alarm,
       );
 
-      updated.add(notification);
+      alert.muted = false;
+      updated.add(alert);
     }
 
     if (updated.isNotEmpty) {
@@ -220,6 +224,7 @@ class AlertNotifications {
           iconColor: Color(0xff862778),
         ),
       );
+
       await Alarm.set(alarmSettings: alarmSettings);
     }
 

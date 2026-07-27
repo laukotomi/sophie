@@ -52,9 +52,6 @@ jobs:
 
       - name: Create lib
         run: |
-          ls -la
-          pwd
-
           cp package*.json deb-sophie/usr/lib/sophie/
           npm --prefix deb-sophie/usr/lib/sophie ci --omit=dev
           npm --prefix deb-sophie/usr/lib/sophie install tsx drizzle-kit

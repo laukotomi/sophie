@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:sophie/events/app_check_for_changes_event.dart';
 import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_menu_changed_event.dart';
 import 'package:sophie/events/app_data_change_event.dart';
@@ -29,7 +30,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _navChannel = MethodChannel('sophie/navigation');
   static const _navEvents = EventChannel('sophie/navigation/events');
 
@@ -39,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _usingCache = false;
   StreamSubscription? _navEventSub;
   AppEventSubscription? _appEventSub;
+  DateTime? _lastCheckForChanges;
 
   @override
   void initState() {
@@ -54,13 +56,35 @@ class _HomeScreenState extends State<HomeScreen> {
       final route = await _navChannel.invokeMethod<String>('getInitialRoute');
       if (route == 'tasks' && mounted) setState(() => _selectedIndex = 1);
     });
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
     _navEventSub?.cancel();
     _appEventSub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  Future didChangeAppLifecycleState(AppLifecycleState state) async {
+    if (state == AppLifecycleState.resumed) {
+      if (!_usingCache &&
+          (_lastCheckForChanges == null ||
+              DateTime.now().difference(_lastCheckForChanges!) >
+                  const Duration(minutes: 1))) {
+        try {
+          _lastCheckForChanges = DateTime.now();
+          await AppEventBus.instance.emit(AppCheckForChangesEvent.start());
+          final data = await getIt<BackendClient>().getDashboardData();
+          await Storage.saveDashboardData(data);
+          await AppEventBus.instance.emit(AppCheckForChangesEvent.result(data));
+        } catch (e) {
+          await AppEventBus.instance.emit(AppCheckForChangesEvent.result(null));
+        }
+      }
+    }
   }
 
   Future _handleAppEvent(AppEvent event) async {
@@ -124,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _currentData = data;
         return data;
       }
-      rethrow;
+      rethrow; // this should not really happen as once logic was successful dashboard data is saved to storage immediately
     } finally {
       if (data != null) {
         if (getIt.isRegistered(type: UserService)) {

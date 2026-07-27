@@ -168,6 +168,10 @@ class NoteSavedEvent extends NoteEvent {
     await noteClient.saveNote(this);
 
     if (hadConflict) {
+      final note = notes.firstWhereOrNull((n) => n.id == noteId);
+      setState(() {
+        note?.hasConflict = true;
+      });
       await AppEventBus.instance.emit(AppSyncConflictEvent());
     }
   }

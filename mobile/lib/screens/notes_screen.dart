@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:sophie/events/app_check_for_changes_event.dart';
 import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
@@ -57,6 +59,43 @@ class _NotesScreenState extends State<NotesScreen> {
     _appEventSub = AppEventBus.instance.listen((event) async {
       if (event is NoteSyncEvent) {
         await _syncNoteChanges();
+      } else if (event is AppCheckForChangesEvent) {
+        if (event.type == CheckForChangesType.start) {
+          _safeSetState(() => _pendingSyncs++);
+        } else if (event.type == CheckForChangesType.result) {
+          _safeSetState(() => _pendingSyncs--);
+
+          if (event.data != null) {
+            for (final backendNote in event.data!.notes) {
+              final noteIndex = widget.notes.indexWhere(
+                (n) => n.id == backendNote.id,
+              );
+              if (noteIndex == -1) {
+                setState(() {
+                  widget.notes.add(backendNote);
+                });
+              }
+
+              final note = widget.notes[noteIndex];
+              if (note.updatedAt != backendNote.updatedAt) {
+                setState(() {
+                  widget.notes[noteIndex] = backendNote;
+                });
+              }
+            }
+
+            for (final note in widget.notes) {
+              final noteIndex = event.data!.notes.indexWhere(
+                (n) => n.id == note.id,
+              );
+              if (noteIndex == -1) {
+                setState(() {
+                  widget.notes.removeWhere((n) => n.id == note.id);
+                });
+              }
+            }
+          }
+        }
       }
     });
   }

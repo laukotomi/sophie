@@ -105,6 +105,7 @@ class TaskSavedEvent extends TaskEvent {
             dueAt: dueAt,
             doneAt: null,
             createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
             isOwner: true,
             collaborators: collaboratorIds,
             alerts: alerts,

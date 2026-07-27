@@ -59,6 +59,7 @@ dashboard.get('/', async (c) => {
                     dueAt: task.dueAt,
                     doneAt: task.doneAt,
                     createdAt: task.createdAt,
+                    updatedAt: task.updatedAt,
                     ownerId: task.owner,
                     recurringGroupId: task.recurringGroupId,
                 })
@@ -77,6 +78,7 @@ dashboard.get('/', async (c) => {
                     dueAt: task.dueAt,
                     doneAt: task.doneAt,
                     createdAt: task.createdAt,
+                    updatedAt: task.updatedAt,
                     ownerId: task.owner,
                     recurringGroupId: task.recurringGroupId,
                 })

@@ -8,6 +8,7 @@ class Task {
   DateTime? dueAt;
   DateTime? doneAt;
   final DateTime createdAt;
+  DateTime updatedAt;
   final bool isOwner;
   List<String> collaborators;
   List<Alert> alerts;
@@ -21,6 +22,7 @@ class Task {
     required this.dueAt,
     required this.doneAt,
     required this.createdAt,
+    required this.updatedAt,
     required this.isOwner,
     required this.collaborators,
     required this.alerts,
@@ -39,6 +41,7 @@ class Task {
         ? DateTime.parse(json['doneAt'] as String).toLocal()
         : null,
     createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
+    updatedAt: DateTime.parse(json['updatedAt'] as String).toLocal(),
     isOwner: json['isOwner'] as bool,
     collaborators: (json['collaborators'] as List<dynamic>)
         .map((c) => c as String)
@@ -57,6 +60,7 @@ class Task {
     'dueAt': dueAt?.toIso8601String(),
     'doneAt': doneAt?.toIso8601String(),
     'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
     'isOwner': isOwner,
     'collaborators': collaborators,
     'alerts': alerts.map((a) => a.toJson()).toList(),

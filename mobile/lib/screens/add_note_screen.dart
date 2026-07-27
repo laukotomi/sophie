@@ -320,7 +320,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
       await NoteEventBus.instance.emit(event);
 
       if (mounted) {
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(true);
       }
     } on UnauthorizedException {
       // onUnauthorized callback already handles logout
@@ -340,18 +340,19 @@ class _AddNoteScreenState extends State<AddNoteScreen>
         final confirmed = _hasChanges ? await showDiscardDialog(context) : true;
         if (confirmed == true && context.mounted) {
           await _releaseEditLock();
-          if (context.mounted) Navigator.of(context).pop();
+          if (context.mounted) Navigator.of(context).pop(false);
         }
       },
       child: Scaffold(
         appBar: AppBar(
           title: Text(_isEditing ? 'Edit Note' : 'New Note'),
-          bottom: _releasingLock
-              ? const PreferredSize(
-                  preferredSize: Size.fromHeight(4),
-                  child: LinearProgressIndicator(),
-                )
-              : null,
+          bottom: PreferredSize(
+            preferredSize: Size.fromHeight(4),
+            child: _releasingLock
+                ? const LinearProgressIndicator()
+                : const SizedBox.shrink(),
+          ),
+
           actions: [
             if (_lockError || widget.offlineMode)
               Tooltip(
@@ -438,7 +439,7 @@ class _AddNoteScreenState extends State<AddNoteScreen>
           ],
         ),
         body: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           child: Form(
             key: _formKey,
             child: Column(

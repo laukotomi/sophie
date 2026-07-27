@@ -15,6 +15,7 @@ class Note {
   int? position;
   List<NoteCollaborator> collaborators;
   final List<NoteFile> files;
+  bool hasConflict = false;
 
   Note({
     required this.id,

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
+import 'package:sophie/events/app_check_for_changes_event.dart';
 import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
@@ -47,6 +48,43 @@ class _TasksScreenState extends State<TasksScreen> {
     _appEventSub = AppEventBus.instance.listen((event) async {
       if (event is TaskSyncEvent) {
         await _syncTaskChanges();
+      } else if (event is AppCheckForChangesEvent) {
+        if (event.type == CheckForChangesType.start) {
+          _safeSetState(() => _pendingSyncs++);
+        } else if (event.type == CheckForChangesType.result) {
+          _safeSetState(() => _pendingSyncs--);
+
+          if (event.data != null) {
+            for (final backendTask in event.data!.tasks) {
+              final taskIndex = widget.tasks.indexWhere(
+                (t) => t.id == backendTask.id,
+              );
+              if (taskIndex == -1) {
+                setState(() {
+                  widget.tasks.add(backendTask);
+                });
+              }
+
+              final task = widget.tasks[taskIndex];
+              if (task.updatedAt != backendTask.updatedAt) {
+                setState(() {
+                  widget.tasks[taskIndex] = backendTask;
+                });
+              }
+            }
+
+            for (final task in widget.tasks) {
+              final taskIndex = event.data!.tasks.indexWhere(
+                (n) => n.id == task.id,
+              );
+              if (taskIndex == -1) {
+                setState(() {
+                  widget.tasks.removeWhere((t) => t.id == task.id);
+                });
+              }
+            }
+          }
+        }
       }
     });
   }

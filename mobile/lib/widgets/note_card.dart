@@ -124,36 +124,72 @@ class _NoteCardState extends State<NoteCard> {
     }
 
     if (!ctx.mounted) return;
+    final noteTextBackup = widget.note.text;
     widget.note.text = widget.note.todoList && _checkedItems.isNotEmpty
         ? _removeCheckedItems(latestText)
         : latestText;
 
-    setState(() => _acquiringLock = false);
+    setState(() {
+      _acquiringLock = false;
+      widget.note.hasConflict =
+          false; // clear conflict flag when opening editor
+    });
 
-    await Navigator.of(ctx).push<Object?>(
+    final result = await Navigator.of(ctx).push<bool>(
       MaterialPageRoute(
         builder: (_) =>
             AddNoteScreen(existingNote: widget.note, offlineMode: offlineMode),
       ),
     );
+
+    if (result == true) {
+      setState(() => _checkedItems.clear());
+    } else {
+      widget.note.text = noteTextBackup;
+    }
   }
 
   Widget _editButton(BuildContext ctx) {
-    if (_acquiringLock) {
-      return const SizedBox(
-        width: 40,
-        height: 40,
-        child: Padding(
-          padding: EdgeInsets.all(8),
-          child: CircularProgressIndicator(strokeWidth: 2),
+    final editControl = _acquiringLock
+        ? const SizedBox(
+            width: 40,
+            height: 40,
+            child: Padding(
+              padding: EdgeInsets.all(8),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          )
+        : IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Edit note',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _openEdit(ctx),
+          );
+
+    if (!widget.note.hasConflict) return editControl;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: 'Conflict detected',
+          child: Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              color: Theme.of(ctx).colorScheme.error,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.priority_high_rounded,
+              size: 12,
+              color: Theme.of(ctx).colorScheme.onError,
+            ),
+          ),
         ),
-      );
-    }
-    return IconButton(
-      icon: const Icon(Icons.edit_outlined),
-      tooltip: 'Edit note',
-      visualDensity: VisualDensity.compact,
-      onPressed: () => _openEdit(ctx),
+        const SizedBox(width: 4),
+        editControl,
+      ],
     );
   }
 
@@ -472,7 +508,7 @@ class _NoteCardState extends State<NoteCard> {
     }
 
     for (final line in lines) {
-      final match = RegExp(r'^-\s+(.+)$').firstMatch(line);
+      final match = RegExp(r'^-\s+(.+)\s*$').firstMatch(line);
       if (match != null) {
         flushBuffer();
         segments.add(_ListItemSegment(match.group(1)!));
