@@ -19,6 +19,7 @@ import 'package:sophie/services/backend.dart';
 import 'package:sophie/services/base_event.dart';
 import 'package:sophie/services/storage.dart';
 import 'package:sophie/services/task_events.dart';
+import 'package:sophie/utils/list_utils.dart';
 import 'package:sophie/widgets/task_card.dart';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -52,38 +53,13 @@ class _TasksScreenState extends State<TasksScreen> {
         if (event.type == CheckForChangesType.start) {
           _safeSetState(() => _pendingSyncs++);
         } else if (event.type == CheckForChangesType.result) {
-          _safeSetState(() => _pendingSyncs--);
+          _safeSetState(() {
+            _pendingSyncs--;
 
-          if (event.data != null) {
-            for (final backendTask in event.data!.tasks) {
-              final taskIndex = widget.tasks.indexWhere(
-                (t) => t.id == backendTask.id,
-              );
-              if (taskIndex == -1) {
-                setState(() {
-                  widget.tasks.add(backendTask);
-                });
-              }
-
-              final task = widget.tasks[taskIndex];
-              if (task.updatedAt != backendTask.updatedAt) {
-                setState(() {
-                  widget.tasks[taskIndex] = backendTask;
-                });
-              }
+            if (event.data != null) {
+              ListUtils.syncLists(widget.tasks, event.data!.tasks);
             }
-
-            for (final task in widget.tasks) {
-              final taskIndex = event.data!.tasks.indexWhere(
-                (n) => n.id == task.id,
-              );
-              if (taskIndex == -1) {
-                setState(() {
-                  widget.tasks.removeWhere((t) => t.id == task.id);
-                });
-              }
-            }
-          }
+          });
         }
       }
     });
@@ -102,17 +78,17 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future _syncTaskChanges() async {
     try {
-      final events = Storage.getOfflineTaskEvents();
+      final events = Storage.taskEvents.getOfflineEvents();
       if (events.isEmpty) return;
 
       for (final event in events) {
         try {
           await event.sync(widget.tasks, _safeSetState);
-          await Storage.removeTaskEvent(event.eventId);
+          await Storage.taskEvents.removeEvent(event.eventId);
         } on UnauthorizedException {
-          await Storage.removeTaskEvent(event.eventId);
+          await Storage.taskEvents.removeEvent(event.eventId);
         } on NotFoundException {
-          await Storage.removeTaskEvent(event.eventId);
+          await Storage.taskEvents.removeEvent(event.eventId);
         }
       }
     } catch (e) {
@@ -139,7 +115,7 @@ class _TasksScreenState extends State<TasksScreen> {
     }
 
     if (widget.usingCache) {
-      await Storage.addOrUpdateTaskEvent(event);
+      await Storage.taskEvents.addOrUpdateEvent(event);
     } else {
       _safeSetState(() => _pendingSyncs++);
       unawaited(_syncEventInBackground(event));
@@ -153,9 +129,9 @@ class _TasksScreenState extends State<TasksScreen> {
   Future _syncEventInBackground(TaskEvent event) async {
     try {
       await event.sync(widget.tasks, _safeSetState);
-      await Storage.removeTaskEvent(event.eventId);
+      await Storage.taskEvents.removeEvent(event.eventId);
     } catch (e) {
-      await Storage.addOrUpdateTaskEvent(event);
+      await Storage.taskEvents.addOrUpdateEvent(event);
       await _handleSyncError(e);
     } finally {
       _safeSetState(() => _pendingSyncs--);
@@ -292,17 +268,10 @@ class _TasksScreenState extends State<TasksScreen> {
               child: IconButton(
                 icon: const Icon(Icons.cloud_off, color: Colors.orange),
                 onPressed: () async {
-                  final taskEvents = Storage.getOfflineTaskEvents();
-                  final events = taskEvents
-                      .map<BaseEvent>((event) => event)
-                      .toList();
                   await Navigator.of(context).push<void>(
                     MaterialPageRoute(
-                      builder: (_) => EventManagerScreen(
-                        events: events,
-                        onDeleteEvent: (event) =>
-                            Storage.removeTaskEvent(event.eventId),
-                      ),
+                      builder: (_) =>
+                          EventManagerScreen(eventStorage: Storage.taskEvents),
                     ),
                   );
                 },

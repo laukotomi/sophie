@@ -23,13 +23,5 @@ abstract class TaskEvent extends BaseEvent<Task> {
 
 class TaskEventBus extends BaseEventBus<TaskEvent> {
   static final TaskEventBus instance = TaskEventBus._();
-  TaskEventBus._();
-
-  @override
-  List<TaskEvent> get unappliedEvents => Storage.getOfflineTaskEvents();
-
-  @override
-  void saveUnappliedEvent(TaskEvent event) {
-    Storage.addOrUpdateTaskEvent(event);
-  }
+  TaskEventBus._() : super(Storage.taskEvents);
 }

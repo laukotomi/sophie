@@ -16,6 +16,7 @@ import 'package:sophie/services/note_events.dart';
 import 'package:sophie/screens/add_note_screen.dart';
 import 'package:sophie/services/base_event.dart';
 import 'package:sophie/services/storage.dart';
+import 'package:sophie/utils/list_utils.dart';
 import 'package:sophie/widgets/note_card.dart';
 
 class NotesScreen extends StatefulWidget {
@@ -62,38 +63,13 @@ class _NotesScreenState extends State<NotesScreen> {
         if (event.type == CheckForChangesType.start) {
           _safeSetState(() => _pendingSyncs++);
         } else if (event.type == CheckForChangesType.result) {
-          _safeSetState(() => _pendingSyncs--);
+          _safeSetState(() {
+            _pendingSyncs--;
 
-          if (event.data != null) {
-            for (final backendNote in event.data!.notes) {
-              final noteIndex = widget.notes.indexWhere(
-                (n) => n.id == backendNote.id,
-              );
-              if (noteIndex == -1) {
-                setState(() {
-                  widget.notes.add(backendNote);
-                });
-              }
-
-              final note = widget.notes[noteIndex];
-              if (note.updatedAt != backendNote.updatedAt) {
-                setState(() {
-                  widget.notes[noteIndex] = backendNote;
-                });
-              }
+            if (event.data != null) {
+              ListUtils.syncLists(widget.notes, event.data!.notes);
             }
-
-            for (final note in widget.notes) {
-              final noteIndex = event.data!.notes.indexWhere(
-                (n) => n.id == note.id,
-              );
-              if (noteIndex == -1) {
-                setState(() {
-                  widget.notes.removeWhere((n) => n.id == note.id);
-                });
-              }
-            }
-          }
+          });
         }
       }
     });
@@ -109,7 +85,7 @@ class _NotesScreenState extends State<NotesScreen> {
 
   Future _syncNoteChanges() async {
     try {
-      final events = Storage.getOfflineNoteEvents();
+      final events = Storage.noteEvents.getOfflineEvents();
       if (events.isEmpty) return;
 
       final seenSavedNoteIds = <String>{};
@@ -121,11 +97,11 @@ class _NotesScreenState extends State<NotesScreen> {
 
         try {
           await event.sync(widget.notes, _safeSetState);
-          await Storage.removeNoteEvent(event.eventId);
+          await Storage.noteEvents.removeEvent(event.eventId);
         } on UnauthorizedException {
-          await Storage.removeNoteEvent(event.eventId);
+          await Storage.noteEvents.removeEvent(event.eventId);
         } on NotFoundException {
-          await Storage.removeNoteEvent(event.eventId);
+          await Storage.noteEvents.removeEvent(event.eventId);
         }
       }
     } catch (e) {
@@ -156,7 +132,7 @@ class _NotesScreenState extends State<NotesScreen> {
     }
 
     if (widget.usingCache) {
-      await Storage.addOrUpdateNoteEvent(event);
+      await Storage.noteEvents.addOrUpdateEvent(event);
     } else {
       _safeSetState(() => _pendingSyncs++);
       unawaited(_syncEventInBackground(event));
@@ -166,9 +142,9 @@ class _NotesScreenState extends State<NotesScreen> {
   Future _syncEventInBackground(NoteEvent event) async {
     try {
       await event.sync(widget.notes, _safeSetState);
-      await Storage.removeNoteEvent(event.eventId);
+      await Storage.noteEvents.removeEvent(event.eventId);
     } catch (e) {
-      await Storage.addOrUpdateNoteEvent(event);
+      await Storage.noteEvents.addOrUpdateEvent(event);
       await _handleSyncError(e);
     } finally {
       _safeSetState(() => _pendingSyncs--);
@@ -269,17 +245,10 @@ class _NotesScreenState extends State<NotesScreen> {
               child: IconButton(
                 icon: const Icon(Icons.cloud_off, color: Colors.orange),
                 onPressed: () async {
-                  final noteEvents = Storage.getOfflineNoteEvents();
-                  final events = noteEvents
-                      .map<BaseEvent>((event) => event)
-                      .toList();
                   await Navigator.of(context).push<void>(
                     MaterialPageRoute(
-                      builder: (_) => EventManagerScreen(
-                        events: events,
-                        onDeleteEvent: (event) =>
-                            Storage.removeNoteEvent(event.eventId),
-                      ),
+                      builder: (_) =>
+                          EventManagerScreen(eventStorage: Storage.noteEvents),
                     ),
                   );
                 },

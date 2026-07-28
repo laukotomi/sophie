@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sophie/models/dashboard_data.dart';
 import 'package:sophie/models/pending_snooze.dart';
 import 'package:sophie/models/scheduled_notification.dart';
+import 'package:sophie/services/event_storage.dart';
 import 'package:sophie/services/note_events.dart';
 import 'package:sophie/services/task_events.dart';
 
@@ -18,12 +19,26 @@ class Storage {
   static const String _offlineTaskEventsKey = 'offline_task_events';
 
   static late SharedPreferences _prefs;
+  static late EventStorage<NoteEvent> noteEvents;
+  static late EventStorage<TaskEvent> taskEvents;
 
   static String? get authToken => _prefs.getString(_authTokenKey);
   static String? get serverUrl => _prefs.getString(_serverUrlKey);
 
   static Future init() async {
     _prefs = await SharedPreferences.getInstance();
+
+    noteEvents = EventStorage<NoteEvent>(
+      _prefs,
+      _offlineNoteEventsKey,
+      (map) => NoteEvent.fromJson(map),
+    );
+
+    taskEvents = EventStorage<TaskEvent>(
+      _prefs,
+      _offlineTaskEventsKey,
+      (map) => TaskEvent.fromJson(map),
+    );
   }
 
   static Future saveDashboardData(DashboardData data) async {
@@ -205,94 +220,5 @@ class Storage {
     final list = _getSnoozePendings();
     if (list.isEmpty) return null;
     return list[0];
-  }
-
-  // ---------------------------------------------------------------------------
-  // Offline note events queue
-  // ---------------------------------------------------------------------------
-  static List<NoteEvent> getOfflineNoteEvents() {
-    final raw = _prefs.getString(_offlineNoteEventsKey);
-    if (raw == null) return [];
-    try {
-      return (jsonDecode(raw) as List<dynamic>)
-          .cast<Map<String, dynamic>>()
-          .map(NoteEvent.fromJson)
-          .toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  static Future _saveOfflineNoteEvents(List<NoteEvent> events) async {
-    await _prefs.setString(
-      _offlineNoteEventsKey,
-      jsonEncode(events.map((e) => e.toJson()).toList()),
-    );
-  }
-
-  static Future addOrUpdateNoteEvent(NoteEvent event) async {
-    final list = getOfflineNoteEvents();
-    final index = list.indexWhere((e) => e.eventId == event.eventId);
-    if (index != -1) {
-      list[index] = event;
-    } else {
-      list.add(event);
-    }
-    await _saveOfflineNoteEvents(list);
-  }
-
-  static Future removeNoteEvent(int eventId) async {
-    final list = getOfflineNoteEvents();
-    final count = list.length;
-    list.removeWhere((e) => e.eventId == eventId);
-
-    if (list.length != count) {
-      await _saveOfflineNoteEvents(list);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Offline task events queue
-  // ---------------------------------------------------------------------------
-
-  static List<TaskEvent> getOfflineTaskEvents() {
-    final raw = _prefs.getString(_offlineTaskEventsKey);
-    if (raw == null) return [];
-    try {
-      return (jsonDecode(raw) as List<dynamic>)
-          .cast<Map<String, dynamic>>()
-          .map(TaskEvent.fromJson)
-          .toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  static Future _saveOfflineTaskEvents(List<TaskEvent> events) async {
-    await _prefs.setString(
-      _offlineTaskEventsKey,
-      jsonEncode(events.map((e) => e.toJson()).toList()),
-    );
-  }
-
-  static Future addOrUpdateTaskEvent(TaskEvent event) async {
-    final list = getOfflineTaskEvents();
-    final index = list.indexWhere((e) => e.eventId == event.eventId);
-    if (index != -1) {
-      list[index] = event;
-    } else {
-      list.add(event);
-    }
-    await _saveOfflineTaskEvents(list);
-  }
-
-  static Future removeTaskEvent(int eventId) async {
-    final list = getOfflineTaskEvents();
-    final count = list.length;
-    list.removeWhere((e) => e.eventId == eventId);
-
-    if (list.length != count) {
-      await _saveOfflineTaskEvents(list);
-    }
   }
 }

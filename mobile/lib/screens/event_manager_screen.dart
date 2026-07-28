@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:sophie/services/base_event.dart';
+import 'package:sophie/services/event_storage.dart';
 
 class EventManagerScreen extends StatefulWidget {
-  final List<BaseEvent> events;
-  final Future Function(BaseEvent event) onDeleteEvent;
+  final EventStorage<BaseEvent> eventStorage;
 
-  const EventManagerScreen({
-    super.key,
-    required this.events,
-    required this.onDeleteEvent,
-  });
+  const EventManagerScreen({super.key, required this.eventStorage});
 
   @override
   State<EventManagerScreen> createState() => _EventManagerScreenState();
@@ -21,7 +17,7 @@ class _EventManagerScreenState extends State<EventManagerScreen> {
   @override
   void initState() {
     super.initState();
-    _events = [...widget.events]
+    _events = [...widget.eventStorage.getOfflineEvents()]
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
@@ -46,8 +42,9 @@ class _EventManagerScreenState extends State<EventManagerScreen> {
 
     if (confirmed != true) return;
 
-    await widget.onDeleteEvent(event);
+    await widget.eventStorage.removeEvent(event.eventId);
     if (!mounted) return;
+
     setState(() {
       _events.removeWhere((e) => e.eventId == event.eventId);
     });

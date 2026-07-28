@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sophie/services/event_storage.dart';
 
 abstract class BaseEvent<T> {
   bool _applied = false;
@@ -47,10 +48,9 @@ abstract class BaseEvent<T> {
 
 abstract class BaseEventBus<T extends BaseEvent> {
   final handlers = <Future Function(T)>[];
+  final EventStorage<T> eventStorage;
 
-  List<T> get unappliedEvents;
-
-  void saveUnappliedEvent(T event);
+  BaseEventBus(this.eventStorage);
 
   EventSubscription<T> listen(Future Function(T) handler) {
     handlers.add(handler);
@@ -60,14 +60,14 @@ abstract class BaseEventBus<T extends BaseEvent> {
 
   Future emit(T event) async {
     if (handlers.isEmpty) {
-      saveUnappliedEvent(event);
+      eventStorage.addOrUpdateEvent(event);
     } else {
       await Future.wait(handlers.map((h) => h(event)));
     }
   }
 
   Future _emitUnappliedEvents() async {
-    for (final event in unappliedEvents) {
+    for (final event in eventStorage.getOfflineEvents()) {
       await emit(event);
     }
   }

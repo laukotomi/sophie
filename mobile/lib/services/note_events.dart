@@ -21,13 +21,5 @@ abstract class NoteEvent extends BaseEvent<Note> {
 
 class NoteEventBus extends BaseEventBus<NoteEvent> {
   static final NoteEventBus instance = NoteEventBus._();
-  NoteEventBus._();
-
-  @override
-  List<NoteEvent> get unappliedEvents => Storage.getOfflineNoteEvents();
-
-  @override
-  void saveUnappliedEvent(NoteEvent event) {
-    Storage.addOrUpdateNoteEvent(event);
-  }
+  NoteEventBus._() : super(Storage.noteEvents);
 }
