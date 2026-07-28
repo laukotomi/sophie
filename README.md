@@ -1,6 +1,6 @@
 # Sophie
 
-Sophie is a mobile-first notes and task manager backed by a TypeScript API and PostgreSQL. It combines shared notes, recurring tasks, attachments, and local notifications in a single app.
+Hi there, Sophie is a mobile-first (with web app support) notes and task manager that I created for myself and for my wife, Sophie. I was using Moe Memos before but it was missing some features I needed, like shared notes. Through the months I put more and more features in this app so I decided to release it on GitHub. However this description is not complete yet as I use it via Debian package but soon I'll add a guide and pipeline to build docker image.
 
 ## What It Does
 
@@ -9,8 +9,8 @@ Sophie is a mobile-first notes and task manager backed by a TypeScript API and P
 - Attach files to notes.
 - Create one-off or recurring tasks.
 - Add task alerts as absolute times or relative reminders before a due date.
-- Trigger alarms, notification actions, snooze flows, and mute windows on mobile.
-- Cache data locally and keep offline event queues for note and task changes.
+- Alarm snooze.
+- Offline mode if there is no connection to the backend.
 
 ## Repository Layout
 
