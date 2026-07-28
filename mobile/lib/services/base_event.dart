@@ -1,31 +1,47 @@
 import 'package:flutter/material.dart';
 
 abstract class BaseEvent<T> {
+  bool _applied = false;
+  bool _synced = false;
+
   DateTime createdAt = DateTime.now();
   int get eventId => createdAt.millisecondsSinceEpoch;
 
   String get type;
 
-  bool applied = false;
-  bool synced = false;
+  Future<bool> apply(List<T> items, Function setState) async {
+    if (_applied) return false;
 
-  Future apply(List<T> items, Function setState);
-  Future sync(List<T> items, Function setState);
+    await onApply(items, setState);
+    _applied = true;
+    return true;
+  }
+
+  Future<bool> sync(List<T> items, Function setState) async {
+    if (_synced) return false;
+
+    await onSync(items, setState);
+    _synced = true;
+    return true;
+  }
+
+  Future onApply(List<T> items, Function setState);
+  Future onSync(List<T> items, Function setState);
 
   @mustCallSuper
   Map<String, dynamic> toJson() => {
     'createdAt': createdAt.toIso8601String(),
     'type': type,
-    'applied': applied,
-    'synced': synced,
+    'applied': _applied,
+    'synced': _synced,
   };
 
   static void fromJson(BaseEvent event, Map<String, dynamic> json) {
     if (json.containsKey('createdAt')) {
       event.createdAt = DateTime.parse(json['createdAt'] as String);
     }
-    event.applied = json['applied'] as bool? ?? false;
-    event.synced = json['synced'] as bool? ?? false;
+    event._applied = json['applied'] as bool? ?? false;
+    event._synced = json['synced'] as bool? ?? false;
   }
 }
 

@@ -120,10 +120,7 @@ class _NotesScreenState extends State<NotesScreen> {
         }
 
         try {
-          if (!event.synced) {
-            await event.sync(widget.notes, _safeSetState);
-            event.synced = true;
-          }
+          await event.sync(widget.notes, _safeSetState);
           await Storage.removeNoteEvent(event.eventId);
         } on UnauthorizedException {
           await Storage.removeNoteEvent(event.eventId);
@@ -154,10 +151,7 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   Future _handleNoteEvent(NoteEvent event) async {
-    if (!event.applied) {
-      await event.apply(widget.notes, _safeSetState);
-      event.applied = true;
-
+    if (await event.apply(widget.notes, _safeSetState)) {
       await AppEventBus.instance.emit(AppDataChangeEvent());
     }
 
@@ -171,10 +165,7 @@ class _NotesScreenState extends State<NotesScreen> {
 
   Future _syncEventInBackground(NoteEvent event) async {
     try {
-      if (!event.synced) {
-        await event.sync(widget.notes, _safeSetState);
-        event.synced = true;
-      }
+      await event.sync(widget.notes, _safeSetState);
       await Storage.removeNoteEvent(event.eventId);
     } catch (e) {
       await Storage.addOrUpdateNoteEvent(event);

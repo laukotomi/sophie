@@ -26,7 +26,7 @@ class TaskGroupDeletedEvent extends TaskEvent {
   }
 
   @override
-  Future apply(List<Task> tasks, Function setState) async {
+  Future onApply(List<Task> tasks, Function setState) async {
     final toRemove = tasks.where((t) => t.recurringGroupId == groupId).toList();
     for (final t in toRemove) {
       await AlertNotifications.cancelForTask(t.id);
@@ -37,7 +37,7 @@ class TaskGroupDeletedEvent extends TaskEvent {
   }
 
   @override
-  Future sync(List<Task> tasks, Function setState) async {
+  Future onSync(List<Task> tasks, Function setState) async {
     await getIt<BackendTask>().deleteTaskGroup(taskId, groupId);
   }
 }

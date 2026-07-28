@@ -22,7 +22,7 @@ class TaskDeletedEvent extends TaskEvent {
   }
 
   @override
-  Future apply(List<Task> tasks, Function setState) async {
+  Future onApply(List<Task> tasks, Function setState) async {
     await AlertNotifications.cancelForTask(taskId);
     setState(() {
       tasks.removeWhere((t) => t.id == taskId);
@@ -30,7 +30,7 @@ class TaskDeletedEvent extends TaskEvent {
   }
 
   @override
-  Future sync(List<Task> tasks, Function setState) async {
+  Future onSync(List<Task> tasks, Function setState) async {
     await getIt<BackendTask>().deleteTask(taskId);
   }
 }

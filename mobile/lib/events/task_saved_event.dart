@@ -77,7 +77,7 @@ class TaskSavedEvent extends TaskEvent {
   }
 
   @override
-  Future apply(List<Task> tasks, Function setState) async {
+  Future onApply(List<Task> tasks, Function setState) async {
     if (!isNew) {
       final task = tasks.firstWhereOrNull((t) => t.id == taskId);
       if (task == null) {
@@ -123,7 +123,7 @@ class TaskSavedEvent extends TaskEvent {
   }
 
   @override
-  Future sync(List<Task> tasks, Function setState) async {
+  Future onSync(List<Task> tasks, Function setState) async {
     await getIt<BackendTask>().saveTask(this);
   }
 }

@@ -87,7 +87,7 @@ class NoteSavedEvent extends NoteEvent {
   );
 
   @override
-  Future apply(List<Note> notes, Function setState) async {
+  Future onApply(List<Note> notes, Function setState) async {
     final users = getIt<UserService>().users;
     final collabs = collaborators.map((c) {
       final user = users.firstWhere((u) => u.id == c.userId);
@@ -156,7 +156,7 @@ class NoteSavedEvent extends NoteEvent {
   }
 
   @override
-  Future sync(List<Note> notes, Function setState) async {
+  Future onSync(List<Note> notes, Function setState) async {
     final noteClient = getIt<BackendNote>();
     bool hadConflict = false;
 

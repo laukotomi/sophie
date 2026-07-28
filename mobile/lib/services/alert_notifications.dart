@@ -277,7 +277,7 @@ class AlertNotifications {
     try {
       if (alertType == AlertTypes.notification ||
           alertType == AlertTypes.both) {
-        await AwesomeNotifications().dismiss(alarmId);
+        await AwesomeNotifications().cancel(alarmId);
       }
     } catch (_) {
       // Ignore errors if the notification was already dismissed.

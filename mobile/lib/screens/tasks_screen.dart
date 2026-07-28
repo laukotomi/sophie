@@ -107,10 +107,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
       for (final event in events) {
         try {
-          if (!event.synced) {
-            await event.sync(widget.tasks, _safeSetState);
-            event.synced = true;
-          }
+          await event.sync(widget.tasks, _safeSetState);
           await Storage.removeTaskEvent(event.eventId);
         } on UnauthorizedException {
           await Storage.removeTaskEvent(event.eventId);
@@ -137,10 +134,7 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future _handleTaskEvent(TaskEvent event) async {
-    if (!event.applied) {
-      await event.apply(widget.tasks, _safeSetState);
-      event.applied = true;
-
+    if (await event.apply(widget.tasks, _safeSetState)) {
       await AppEventBus.instance.emit(AppDataChangeEvent());
     }
 
@@ -158,10 +152,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future _syncEventInBackground(TaskEvent event) async {
     try {
-      if (!event.synced) {
-        await event.sync(widget.tasks, _safeSetState);
-        event.synced = true;
-      }
+      await event.sync(widget.tasks, _safeSetState);
       await Storage.removeTaskEvent(event.eventId);
     } catch (e) {
       await Storage.addOrUpdateTaskEvent(event);

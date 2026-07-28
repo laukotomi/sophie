@@ -26,7 +26,7 @@ class NoteFileDeletedEvent extends NoteEvent {
       );
 
   @override
-  Future apply(List<Note> notes, Function setState) async {
+  Future onApply(List<Note> notes, Function setState) async {
     final note = notes.firstWhere((n) => n.id == noteId);
     setState(() {
       note.files.removeWhere((f) => f.id == fileId);
@@ -34,7 +34,7 @@ class NoteFileDeletedEvent extends NoteEvent {
   }
 
   @override
-  Future sync(List<Note> notes, Function setState) async {
+  Future onSync(List<Note> notes, Function setState) async {
     await getIt<BackendNoteFile>().deleteFile(fileId!);
   }
 }

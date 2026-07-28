@@ -44,10 +44,8 @@ class TaskSetDoneEvent extends TaskEvent {
   }
 
   @override
-  Future apply(List<Task> tasks, Function setState) async {
-    final task = tasks.firstWhere(
-      (t) => t.id == taskId,
-    ); // required because this task can be initialized from notification event
+  Future onApply(List<Task> tasks, Function setState) async {
+    final task = tasks.firstWhere((t) => t.id == taskId);
     setState(() {
       task.doneAt = doneAt;
       TaskUtils.sortTasks(tasks);
@@ -65,29 +63,9 @@ class TaskSetDoneEvent extends TaskEvent {
     }
 
     if (doneAt != null && task.rrule != null && task.dueAt != null) {
-      final rrule = RecurrenceRule.fromString(task.rrule!);
+      final nextDueAt = getNextDueAt(task);
 
-      final startFakeUtc = DateTime.utc(
-        task.dueAt!.year,
-        task.dueAt!.month,
-        task.dueAt!.day,
-        task.dueAt!.hour,
-        task.dueAt!.minute,
-      );
-
-      final nextDueAtUtc = rrule
-          .getInstances(start: startFakeUtc, after: startFakeUtc)
-          .firstOrNull;
-
-      if (nextDueAtUtc != null) {
-        final nextDueAt = DateTime(
-          nextDueAtUtc.year,
-          nextDueAtUtc.month,
-          nextDueAtUtc.day,
-          nextDueAtUtc.hour,
-          nextDueAtUtc.minute,
-        );
-
+      if (nextDueAt != null) {
         final existsAlready = tasks.any(
           (t) =>
               t.dueAt == nextDueAt &&
@@ -106,18 +84,44 @@ class TaskSetDoneEvent extends TaskEvent {
             taskId: null,
           );
           await nextTaskEvent!.apply(tasks, setState);
-          nextTaskEvent!.applied = true;
         }
       }
     }
   }
 
   @override
-  Future sync(List<Task> tasks, Function setState) async {
+  Future onSync(List<Task> tasks, Function setState) async {
     await getIt<BackendTask>().setTaskDone(taskId, doneAt);
-    if (nextTaskEvent != null) {
-      await nextTaskEvent!.sync(tasks, setState);
-      nextTaskEvent!.synced = true;
+    await nextTaskEvent?.sync(tasks, setState);
+  }
+
+  DateTime? getNextDueAt(Task task) {
+    final rrule = RecurrenceRule.fromString(task.rrule!);
+
+    final startFakeUtc = DateTime.utc(
+      task.dueAt!.year,
+      task.dueAt!.month,
+      task.dueAt!.day,
+      task.dueAt!.hour,
+      task.dueAt!.minute,
+    );
+
+    final nextDueAtUtc = rrule
+        .getInstances(start: startFakeUtc, after: startFakeUtc)
+        .firstOrNull;
+
+    if (nextDueAtUtc != null) {
+      final nextDueAt = DateTime(
+        nextDueAtUtc.year,
+        nextDueAtUtc.month,
+        nextDueAtUtc.day,
+        nextDueAtUtc.hour,
+        nextDueAtUtc.minute,
+      );
+
+      return nextDueAt;
     }
+
+    return null;
   }
 }

@@ -18,14 +18,14 @@ class NoteDeletedEvent extends NoteEvent {
       NoteDeletedEvent(m['noteId'] as String);
 
   @override
-  Future apply(List<Note> notes, Function setState) async {
+  Future onApply(List<Note> notes, Function setState) async {
     setState(() {
       notes.removeWhere((n) => n.id == noteId);
     });
   }
 
   @override
-  Future sync(List<Note> notes, Function setState) async {
+  Future onSync(List<Note> notes, Function setState) async {
     await getIt<BackendNote>().deleteNote(noteId);
   }
 }
