@@ -1,6 +1,7 @@
 import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
@@ -121,8 +122,8 @@ class _TasksScreenState extends State<TasksScreen> {
       unawaited(_syncEventInBackground(event));
     }
 
-    if (Platform.isAndroid) {
-      await _pushTasksToWidget(widget.tasks);
+    if (!kIsWeb && Platform.isAndroid) {
+      await _pushTasksToWidget();
     }
   }
 
@@ -150,8 +151,8 @@ class _TasksScreenState extends State<TasksScreen> {
         .toList();
   }
 
-  static Future _pushTasksToWidget(List<Task> tasks) async {
-    final pending = tasks.where((t) => t.doneAt == null).toList();
+  Future _pushTasksToWidget() async {
+    final pending = widget.tasks.where((t) => t.doneAt == null).toList();
     final json = jsonEncode(
       pending
           .map(

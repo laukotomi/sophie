@@ -30,7 +30,7 @@ class _NoteCardState extends State<NoteCard> {
   final _overlayController = OverlayPortalController();
   late final AppEventSubscription _appEventSub;
   double _overlayTop = 0;
-  double _overlayRight = 0;
+  double _overlayLeft = 0;
   bool _acquiringLock = false;
   bool _collapsed = true;
   bool _overflows = false;
@@ -67,8 +67,12 @@ class _NoteCardState extends State<NoteCard> {
     final renderBox = _cardKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null || !renderBox.hasSize) return;
 
+    final overlayBox =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlayBox == null || !overlayBox.hasSize) return;
+
     final size = renderBox.size;
-    final topLeft = renderBox.localToGlobal(Offset.zero);
+    final topLeft = renderBox.localToGlobal(Offset.zero, ancestor: overlayBox);
     final cardTop = topLeft.dy;
     final cardBottom = cardTop + size.height;
 
@@ -87,9 +91,14 @@ class _NoteCardState extends State<NoteCard> {
     );
 
     if (shouldFloat && !_overlayController.isShowing) {
+      const horizontalInset = 16.0;
+      const editButtonWidth = 40.0;
       _overlayTop = viewTop + 4;
-      _overlayRight =
-          MediaQuery.sizeOf(context).width - (topLeft.dx + size.width) + 20;
+      _overlayLeft =
+          (topLeft.dx + size.width - horizontalInset - editButtonWidth).clamp(
+            0.0,
+            overlayBox.size.width - editButtonWidth,
+          );
       _overlayController.show();
     } else if (!shouldFloat && _overlayController.isShowing) {
       _overlayController.hide();
@@ -205,7 +214,7 @@ class _NoteCardState extends State<NoteCard> {
       controller: _overlayController,
       overlayChildBuilder: (ctx) => Positioned(
         top: _overlayTop,
-        right: _overlayRight,
+        left: _overlayLeft,
         child: Material(color: Colors.transparent, child: _editButton(ctx)),
       ),
       child: Card(

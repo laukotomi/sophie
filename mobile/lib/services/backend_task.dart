@@ -50,12 +50,12 @@ class BackendTask {
     }
   }
 
-  Future deleteTaskGroup(String taskId, String groupId) async {
+  Future deleteTaskGroup(String taskId) async {
     final response = await http
         .delete(
           Uri.parse('$baseUrl/api/tasks/group'),
           headers: getHeaders(true),
-          body: jsonEncode({'taskId': taskId, 'groupId': groupId}),
+          body: jsonEncode({'taskId': taskId}),
         )
         .timeout(timeout);
 

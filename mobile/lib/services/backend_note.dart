@@ -23,6 +23,34 @@ class BackendNote {
     required this.timeout,
   });
 
+  Future<http.MultipartFile> _buildMultipartFile(
+    String field,
+    String path,
+    String filename,
+  ) async {
+    // On web, file_picker may return a data URL in `path`.
+    if (path.startsWith('data:')) {
+      final commaIndex = path.indexOf(',');
+      if (commaIndex == -1) {
+        throw Exception('Invalid data URL for file upload: missing payload.');
+      }
+
+      final metadata = path.substring(0, commaIndex);
+      final payload = path.substring(commaIndex + 1);
+
+      if (!metadata.contains(';base64')) {
+        throw Exception(
+          'Unsupported data URL for file upload: expected base64 payload.',
+        );
+      }
+
+      final bytes = base64Decode(Uri.decodeComponent(payload));
+      return http.MultipartFile.fromBytes(field, bytes, filename: filename);
+    }
+
+    return http.MultipartFile.fromPath(field, path, filename: filename);
+  }
+
   Future<http.MultipartRequest> _buildNoteRequest({
     required String method,
     required String noteId,
@@ -61,11 +89,7 @@ class BackendNote {
     for (final file in files) {
       request.fields['fileIds'] = file.id;
       request.files.add(
-        await http.MultipartFile.fromPath(
-          'files',
-          file.path,
-          filename: file.name,
-        ),
+        await _buildMultipartFile('files', file.path, file.name),
       );
     }
     return request;

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/services/alert_notifications.dart';
@@ -23,7 +24,9 @@ class TaskDeletedEvent extends TaskEvent {
 
   @override
   Future onApply(List<Task> tasks, Function setState) async {
-    await AlertNotifications.cancelForTask(taskId);
+    if (!kIsWeb) {
+      await AlertNotifications.cancelForTask(taskId);
+    }
     setState(() {
       tasks.removeWhere((t) => t.id == taskId);
     });

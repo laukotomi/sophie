@@ -100,10 +100,10 @@ files.delete('/', async (c) => {
     const { record, error } = await resolveFileAccess(fileId, user.id, 'edit');
     if (error) return error;
 
-    await db.delete(noteFiles).where(eq(noteFiles.id, record.id));
-
     const filePath = noteFilePath(record.noteId, record.id);
     await new Promise<void>((resolve) => unlink(filePath, () => resolve()));
+
+    await db.delete(noteFiles).where(eq(noteFiles.id, record.id));
 
     return new Response(null, { status: 204 });
 });

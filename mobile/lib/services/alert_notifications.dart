@@ -163,7 +163,6 @@ class AlertNotifications {
     if (updated.isNotEmpty) {
       await Storage.updateTaskAlerts(updated);
     }
-    await Storage.setMutedUntil(until);
   }
 
   static Future cancelMute() async {
@@ -188,7 +187,6 @@ class AlertNotifications {
     if (updated.isNotEmpty) {
       await Storage.updateTaskAlerts(updated);
     }
-    await Storage.clearMutedUntil();
   }
 
   // ---------------------------------------------------------------------------

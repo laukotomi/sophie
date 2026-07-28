@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sophie/models/scheduled_notification.dart';
@@ -51,7 +52,10 @@ class _AlertManagerScreenState extends State<AlertManagerScreen> {
       ),
     );
     if (confirmed == true) {
-      await AlertNotifications.cancelAlarm(entry);
+      if (!kIsWeb) {
+        await AlertNotifications.cancelAlarm(entry);
+      }
+
       if (mounted) {
         setState(() {
           _alerts = _loadAlerts();
@@ -97,7 +101,11 @@ class _AlertManagerScreenState extends State<AlertManagerScreen> {
     setState(() => _loading = true);
     try {
       final until = DateTime.now().add(duration);
-      await AlertNotifications.muteUntil(until);
+      await Storage.setMutedUntil(until);
+
+      if (!kIsWeb) {
+        await AlertNotifications.muteUntil(until);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -111,7 +119,11 @@ class _AlertManagerScreenState extends State<AlertManagerScreen> {
   Future _cancelMute() async {
     setState(() => _loading = true);
     try {
-      await AlertNotifications.cancelMute();
+      await Storage.clearMutedUntil();
+
+      if (!kIsWeb) {
+        await AlertNotifications.cancelMute();
+      }
     } catch (_) {
     } finally {
       if (mounted) {

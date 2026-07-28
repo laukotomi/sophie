@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/storage.dart';
@@ -62,7 +63,9 @@ class SnoozePickerScreen extends StatelessWidget {
   }
 
   Future _setNewAlarm(BuildContext context, DateTime fireAt) async {
-    await AlertNotifications.rescheduleAlarm(alarmId, taskId, fireAt, body);
+    if (!kIsWeb) {
+      await AlertNotifications.rescheduleAlarm(alarmId, taskId, fireAt, body);
+    }
     await Storage.removeSnoozePending(alarmId);
     if (context.mounted) Navigator.of(context).pop();
   }

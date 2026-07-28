@@ -242,10 +242,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     setState(() => _deleting = true);
     try {
       await TaskEventBus.instance.emit(
-        TaskGroupDeletedEvent(
-          taskId: widget.existingTask!.id,
-          groupId: widget.existingTask!.recurringGroupId!,
-        ),
+        TaskGroupDeletedEvent(taskId: widget.existingTask!.id),
       );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {

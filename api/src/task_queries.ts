@@ -70,10 +70,12 @@ export async function deleteTask(userId: string, taskId: string): Promise<void> 
     console.log(`SUCCESS - Task deleted`);
 }
 
-export async function deleteTaskGroup(userId: string, taskId: string, groupId: string): Promise<void> {
-    console.log(`START deleteTaskGroup - userId: ${userId}, taskId: ${taskId}, groupId: ${groupId}`);
-    await assertEditAccess(userId, taskId);
-    await db.delete(task).where(eq(task.recurringGroupId, groupId));
+export async function deleteTaskGroup(userId: string, taskId: string): Promise<void> {
+    console.log(`START deleteTaskGroup - userId: ${userId}, taskId: ${taskId}`);
+    const existing = await assertEditAccess(userId, taskId);
+    if (existing.recurringGroupId) {
+        await db.delete(task).where(eq(task.recurringGroupId, existing.recurringGroupId));
+    }
     console.log(`SUCCESS - Task group deleted`);
 }
 
@@ -93,7 +95,7 @@ export async function setTaskDone(
 
 async function assertEditAccess(userId: string, taskId: string) {
     const [existing] = await db
-        .select({ id: task.id, owner: task.owner })
+        .select({ id: task.id, owner: task.owner, recurringGroupId: task.recurringGroupId })
         .from(task)
         .where(eq(task.id, taskId));
 
@@ -105,6 +107,8 @@ async function assertEditAccess(userId: string, taskId: string) {
         console.error(`Access denied - Owner: ${existing.owner}, Requester: ${userId}`);
         throw new Error('Forbidden');
     }
+
+    return existing;
 }
 
 async function assertViewAccess(userId: string, taskId: string) {

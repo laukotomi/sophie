@@ -26,6 +26,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Flutter
+        uses: https://github.com/subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.41.6
+          cache: true
+          pub-cache: true
+
       - name: Build
         run: |
           mkdir build
@@ -39,6 +47,10 @@ jobs:
           sed -i 's|\.\./src/|\.\./dist/|g' scripts/*.ts
           npm run build
           cd ..
+
+          cd ../mobile
+          flutter pub get
+          flutter build web --release
 
       - name: Start building debian package
         uses: http://forgejo.lan/tomi/forgejo-actions/deb-start@v1.0.3
@@ -58,6 +70,7 @@ jobs:
 
           mv build/dist deb-sophie/usr/lib/sophie/
           mv build/scripts deb-sophie/usr/lib/sophie/
+          mv ../mobile/build/web deb-sophie/usr/lib/sophie/
 
           cp drizzle.config.ts deb-sophie/usr/lib/sophie/
           mkdir deb-sophie/usr/lib/sophie/drizzle

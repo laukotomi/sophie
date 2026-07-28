@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:rrule/rrule.dart';
 import 'package:sophie/events/task_saved_event.dart';
 import 'package:sophie/main.dart';
@@ -51,15 +52,17 @@ class TaskSetDoneEvent extends TaskEvent {
       TaskUtils.sortTasks(tasks);
     });
 
-    if (doneAt != null) {
-      await AlertNotifications.cancelForTask(task.id);
-    } else {
-      await AlertNotifications.scheduleAlerts(
-        task.id,
-        task.dueAt,
-        task.alerts,
-        task.text,
-      );
+    if (!kIsWeb) {
+      if (doneAt != null) {
+        await AlertNotifications.cancelForTask(task.id);
+      } else {
+        await AlertNotifications.scheduleAlerts(
+          task.id,
+          task.dueAt,
+          task.alerts,
+          task.text,
+        );
+      }
     }
 
     if (doneAt != null && task.rrule != null && task.dueAt != null) {

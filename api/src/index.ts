@@ -1,6 +1,10 @@
 import { serve } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { auth } from './auth.js';
 import notesRouter from './routes/notes.js';
 import dashboardRouter from './routes/dashboard.js';
@@ -9,6 +13,9 @@ import tokenRouter from './routes/token.js';
 import filesRouter from './routes/files.js';
 
 const app = new Hono();
+const webRoot = process.env.WEB_ROOT ?? 'web';
+const webIndexPath = join(process.cwd(), webRoot, 'index.html');
+const hasWebBuild = existsSync(webIndexPath);
 
 app.use(cors({
     origin: process.env.CORS_ORIGIN ?? '*',
@@ -38,7 +45,24 @@ app.route('/api/notes', notesRouter);
 app.route('/api/tasks', tasksRouter);
 app.route('/api/files', filesRouter);
 
-app.get('/', (c) => c.json({ status: 'ok' }));
+app.get('/healthz', (c) => c.json({ status: 'ok' }));
+
+if (hasWebBuild) {
+    app.use('*', serveStatic({ root: `./${webRoot}` }));
+
+    // SPA fallback for client-side routes.
+    app.get('*', async (c) => {
+        if (c.req.path.startsWith('/api/')) {
+            return c.notFound();
+        }
+
+        const indexHtml = await readFile(webIndexPath, 'utf-8');
+        c.header('Content-Type', 'text/html; charset=utf-8');
+        return c.body(indexHtml);
+    });
+} else {
+    app.get('/', (c) => c.json({ status: 'ok' }));
+}
 
 const port = Number(process.env.PORT ?? 3000);
 console.log(`Server running on http://localhost:${port}`);

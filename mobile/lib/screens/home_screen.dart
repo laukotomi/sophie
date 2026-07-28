@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sophie/events/app_check_for_changes_event.dart';
@@ -47,15 +49,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     _dataFuture = _loadData();
     _appEventSub = AppEventBus.instance.listen(_handleAppEvent);
-    // Background case: app already running, widget tapped → onNewIntent fires.
-    _navEventSub = _navEvents.receiveBroadcastStream().listen((route) {
-      if (route == 'tasks' && mounted) setState(() => _selectedIndex = 1);
-    });
-    // Cold-start case: app launched from widget.
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final route = await _navChannel.invokeMethod<String>('getInitialRoute');
-      if (route == 'tasks' && mounted) setState(() => _selectedIndex = 1);
-    });
+    if (!kIsWeb && Platform.isAndroid) {
+      // Background case: app already running, widget tapped → onNewIntent fires.
+      _navEventSub = _navEvents.receiveBroadcastStream().listen((route) {
+        if (route == 'tasks' && mounted) setState(() => _selectedIndex = 1);
+      });
+      // Cold-start case: app launched from widget.
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final route = await _navChannel.invokeMethod<String>('getInitialRoute');
+        if (route == 'tasks' && mounted) setState(() => _selectedIndex = 1);
+      });
+    }
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -118,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _usingCache = false;
           _dataFuture = () async {
             final data = await _loadData();
-            if (!_usingCache) {
+            if (!_usingCache && !kIsWeb) {
               // This might not be necessary anymore
               await AlertNotifications.refreshNotifications(data.tasks);
             }

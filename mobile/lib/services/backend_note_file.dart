@@ -39,6 +39,26 @@ class BackendNoteFile {
     }
   }
 
+  Future<(List<int>, String?)> downloadFileBytes(String fileId) async {
+    final response = await http
+        .get(
+          Uri.parse(
+            '$baseUrl/api/files?id=${Uri.encodeQueryComponent(fileId)}',
+          ),
+          headers: getHeaders(false),
+        )
+        .timeout(_uploadTimeout);
+
+    await checkUnauthorized(response.statusCode);
+    if (response.statusCode == 403) throw Exception('Forbidden');
+    if (response.statusCode == 404) throw Exception('File not found');
+    if (response.statusCode != 200) {
+      throw Exception('Failed to download file: ${response.statusCode}');
+    }
+
+    return (response.bodyBytes, response.headers['content-type']);
+  }
+
   Future deleteFile(String fileId) async {
     final response = await http
         .delete(

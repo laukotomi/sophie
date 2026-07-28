@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/note_file.dart';
 import 'package:sophie/services/backend_note_file.dart';
+import 'package:sophie/utils/browser_download_stub.dart'
+    if (dart.library.html) 'package:sophie/utils/browser_download_web.dart';
 
 class FileDownloadChip extends StatefulWidget {
   final NoteFile file;
@@ -16,6 +19,9 @@ class FileDownloadChip extends StatefulWidget {
 
 class _FileDownloadChipState extends State<FileDownloadChip> {
   bool _downloading = false;
+
+  bool get _usesLocalFileSystemDownload =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   Future<bool> _ensureStoragePermission() async {
     // On Android 11+ (API 30+), WRITE_EXTERNAL_STORAGE is revoked for the
@@ -60,7 +66,9 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
   }
 
   Future _download() async {
-    if (!await _ensureStoragePermission()) return;
+    if (_usesLocalFileSystemDownload && !await _ensureStoragePermission()) {
+      return;
+    }
     if (!mounted) return;
 
     setState(() => _downloading = true);
@@ -72,16 +80,32 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
       ),
     );
     try {
-      final path = '/storage/emulated/0/Download/${widget.file.fileName}';
-      await getIt<BackendNoteFile>().downloadFileTo(widget.file.id, path);
-      // Notify MediaStore so the file appears in file explorers immediately.
-      await const MethodChannel(
-        'sophie/media_scanner',
-      ).invokeMethod('scanFile', {'path': path});
+      if (_usesLocalFileSystemDownload) {
+        final path = '/storage/emulated/0/Download/${widget.file.fileName}';
+        await getIt<BackendNoteFile>().downloadFileTo(widget.file.id, path);
+        // Notify MediaStore so the file appears in file explorers immediately.
+        await const MethodChannel(
+          'sophie/media_scanner',
+        ).invokeMethod('scanFile', {'path': path});
+      } else {
+        final (bytes, contentType) = await getIt<BackendNoteFile>()
+            .downloadFileBytes(widget.file.id);
+
+        saveBytesToBrowserDownload(
+          bytes: bytes,
+          filename: widget.file.fileName,
+          mimeType: contentType,
+        );
+      }
+
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Saved: ${widget.file.fileName}'),
+          content: Text(
+            _usesLocalFileSystemDownload
+                ? 'Saved: ${widget.file.fileName}'
+                : 'Download started: ${widget.file.fileName}',
+          ),
           duration: const Duration(seconds: 4),
         ),
       );

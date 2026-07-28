@@ -1,42 +1,220 @@
-# sv
+# Sophie
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Sophie is a mobile-first notes and task manager backed by a TypeScript API and PostgreSQL. It combines shared notes, recurring tasks, attachments, and local notifications in a single app.
 
-## Creating a project
+## What It Does
 
-If you're seeing this, you've probably already done this step. Congrats!
+- Create and edit notes with colors, todo list mode, and optional pinning behavior.
+- Share notes with collaborators using view or edit permissions.
+- Attach files to notes.
+- Create one-off or recurring tasks.
+- Add task alerts as absolute times or relative reminders before a due date.
+- Trigger alarms, notification actions, snooze flows, and mute windows on mobile.
+- Cache data locally and keep offline event queues for note and task changes.
 
-```sh
-# create a new project
-npx sv create my-app
+## Repository Layout
+
+```text
+.
+├── api/      # Hono + TypeScript + Drizzle + PostgreSQL backend
+└── mobile/   # Flutter client for Android, iOS, desktop, and web targets
 ```
 
-To recreate this project with the same configuration:
+## Tech Stack
 
-```sh
-# recreate this project
-npx sv@0.13.0 create --template minimal --types ts --add prettier eslint vitest="usages:unit,component" tailwindcss="plugins:typography,forms" sveltekit-adapter="adapter:node" drizzle="database:postgresql+postgresql:postgres.js+docker:yes" better-auth="demo:password" --install npm sophie
+### Mobile
+
+- Flutter
+- get_it for service location
+- shared_preferences for local persistence
+- awesome_notifications and alarm for alerts
+- rrule and rrule_generator for recurring tasks
+- file_picker for attachments
+
+### API
+
+- Node.js
+- TypeScript
+- Hono
+- better-auth
+- Drizzle ORM
+- PostgreSQL
+
+## Architecture Overview
+
+### Mobile app
+
+The Flutter app initializes local storage and notification services on startup, then signs in against a user-provided server URL. Domain logic is split into small services for backend access, storage, alerts, and event handling.
+
+Main areas:
+
+- `lib/screens/` contains the UI flows such as login, home, notes, tasks, and snooze handling.
+- `lib/services/` contains backend clients, storage, alert scheduling, and event buses.
+- `lib/events/` contains the note and task event models used for local apply and later sync.
+
+### Backend
+
+The API is a Hono server with route modules for notes, tasks, dashboard data, auth token exchange, and file handling. Authentication is provided by better-auth, persistence is handled through Drizzle ORM, and the database schema is managed with SQL migrations in `api/drizzle/`.
+
+Main endpoints:
+
+- `/api/auth/**`
+- `/api/token`
+- `/api/dashboard`
+- `/api/notes`
+- `/api/tasks`
+- `/api/files`
+
+## Prerequisites
+
+### For the API
+
+- Node.js 18+
+- npm
+- PostgreSQL
+
+### For the mobile app
+
+- Flutter SDK compatible with `sdk: ^3.11.4`
+- A configured Android, iOS, desktop, or web toolchain depending on your target
+
+## Quick Start
+
+### Option 1: Run the API with Docker Compose
+
+From `api/`:
+
+```bash
+docker-compose up --build
 ```
 
-## Developing
+This starts:
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+- PostgreSQL
+- the Sophie API on `http://localhost:3000`
+- Adminer on `http://localhost:8888`
 
-```sh
+### Option 2: Run the API manually
+
+1. Create an env file in `api/`.
+2. Install dependencies.
+3. Run migrations.
+4. Start the dev server.
+
+Example:
+
+```bash
+cd api
+cp .env.example .env
+npm ci
+npm run db:migrate
 npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
 ```
 
-## Building
+## API Environment Variables
 
-To create a production version of your app:
+Set these in `api/.env`:
 
-```sh
+```env
+DATABASE_URL=postgres://user:password@localhost:5432/sophie
+PORT=3000
+ORIGIN=http://localhost:3000
+CORS_ORIGIN=http://localhost:5173
+UPLOADS_DIR=./uploads
+BETTER_AUTH_SECRET=change-me-to-a-long-random-secret
+```
+
+Notes:
+
+- `BETTER_AUTH_SECRET` should be replaced with a long random value.
+- `UPLOADS_DIR` must point to a writable directory.
+- `ORIGIN` must match the base URL the auth system should use.
+
+## Create the First User
+
+The mobile app signs in with email and password. To create the first account:
+
+```bash
+cd api
+npm run create-user
+```
+
+The script prompts for:
+
+- email
+- password
+- name
+
+## Run the Mobile App
+
+```bash
+cd mobile
+flutter pub get
+flutter run
+```
+
+On first login, the app asks for:
+
+- server URL
+- email
+- password
+
+For a local Android emulator, `http://10.0.2.2:3000` is usually the correct server URL. For a physical device, use your computer's LAN IP address, for example `http://192.168.x.y:3000`.
+
+## Useful Commands
+
+### API
+
+```bash
+npm run dev
 npm run build
+npm start
+npm run db:push
+npm run db:generate
+npm run db:migrate
+npm run db:studio
+npm run auth:schema
+npm run create-user
 ```
 
-You can preview the production build with `npm run preview`.
+### Mobile
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+```bash
+flutter pub get
+flutter run
+flutter test
+flutter build apk
+flutter build ios
+```
+
+## Data Model Highlights
+
+The backend stores:
+
+- users and auth/session records
+- notes and note history
+- note collaborators and per-user note ordering
+- note file metadata
+- tasks, collaborators, and task alerts
+
+Task alerts support two reminder styles:
+
+- absolute date-time reminders
+- relative reminders before the task due date
+
+## Operational Notes
+
+- The Docker Compose file currently contains development credentials and should not be used unchanged in production.
+- The mobile app requests notification and exact alarm permissions at runtime.
+- File uploads require both database state and a writable upload directory on the API host.
+- The repository currently has little automated test coverage, so manual verification is still important for notification flows, attachments, and recurring-task behavior.
+
+## Development Notes
+
+- The API entrypoint runs database migrations before starting the server.
+- Mobile authentication state and server URL are stored locally.
+- The app is localized for English and Hungarian.
+
+## License
+
+See `LICENSE`.

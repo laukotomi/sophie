@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/alert.dart';
 import 'package:sophie/models/task.dart';
@@ -115,7 +116,9 @@ class TaskSavedEvent extends TaskEvent {
       });
     }
 
-    await AlertNotifications.scheduleAlerts(taskId, dueAt, alerts, text);
+    if (!kIsWeb) {
+      await AlertNotifications.scheduleAlerts(taskId, dueAt, alerts, text);
+    }
 
     setState(() {
       TaskUtils.sortTasks(tasks);

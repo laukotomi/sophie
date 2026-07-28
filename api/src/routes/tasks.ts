@@ -167,12 +167,8 @@ tasks.delete('/group', async (c) => {
         return c.json({ error: 'taskId is required' }, 400);
     }
 
-    if (!body || typeof body.groupId !== 'string' || !body.groupId.trim()) {
-        return c.json({ error: 'groupId is required' }, 400);
-    }
-
     try {
-        await deleteTaskGroup(user.id, body.taskId, body.groupId);
+        await deleteTaskGroup(user.id, body.taskId);
     } catch (e) {
         console.error('[DELETE /api/tasks/group] deleteTaskGroup failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';

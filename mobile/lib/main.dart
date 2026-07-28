@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get_it/get_it.dart';
@@ -16,12 +16,15 @@ final navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final locale = Platform.localeName; // e.g. 'hu_HU'
+  final locale = WidgetsBinding.instance.platformDispatcher.locale.toString();
   Intl.defaultLocale = locale;
   await initializeDateFormatting(locale);
 
   await Storage.init();
-  await AlertNotifications.init();
+
+  if (!kIsWeb) {
+    await AlertNotifications.init();
+  }
 
   runApp(
     MainApp(
@@ -52,7 +55,9 @@ class _MainAppState extends State<MainApp> {
       _onLoggedIn(_token!, widget.initialServerUrl!);
     }
 
-    AlertNotifications.requestPermissions();
+    if (!kIsWeb) {
+      AlertNotifications.requestPermissions();
+    }
   }
 
   void _onLoggedIn(String token, String serverUrl) {
@@ -70,7 +75,9 @@ class _MainAppState extends State<MainApp> {
   Future _onLoggedOut() async {
     await Storage.clear();
     getIt.reset();
-    AlertNotifications.clear();
+    if (!kIsWeb) {
+      AlertNotifications.clear();
+    }
     setState(() {
       _token = null;
     });
@@ -83,8 +90,26 @@ class _MainAppState extends State<MainApp> {
       theme: ThemeData.dark(useMaterial3: true),
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       supportedLocales: const [Locale('en'), Locale('hu')],
-      locale: Locale(Platform.localeName.split('_').first),
-      builder: (context, child) => SafeArea(child: child!),
+      locale: Locale(
+        WidgetsBinding.instance.platformDispatcher.locale.languageCode,
+      ),
+      builder: (context, child) {
+        final safeChild = SafeArea(child: child!);
+
+        if (!kIsWeb) {
+          return safeChild;
+        }
+
+        return ColoredBox(
+          color: const Color(0xFF0F141B),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: safeChild,
+            ),
+          ),
+        );
+      },
       home: _token == null
           ? LoginScreen(onLoggedIn: _onLoggedIn)
           : HomeScreen(onLoggedOut: _onLoggedOut),
