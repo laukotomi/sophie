@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.currentState
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionStartActivity as actionStartActivityWithIntent
@@ -27,7 +28,10 @@ import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
+import androidx.glance.state.GlanceStateDefinition
 import androidx.glance.unit.ColorProvider
+import es.antonborri.home_widget.HomeWidgetGlanceState
+import es.antonborri.home_widget.HomeWidgetGlanceStateDefinition
 import org.json.JSONArray
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -71,7 +75,6 @@ private fun parseTaskColor(hex: String?): Color? {
 class TasksWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val tasks = loadPendingTasks(context)
         val launchIntent = Intent(context, MainActivity::class.java).apply {
             data = Uri.parse("sophie://widget/tasks")
             putExtra("homeWidgetIsWidgetClick", true)
@@ -80,6 +83,8 @@ class TasksWidget : GlanceAppWidget() {
         val launchAction = actionStartActivityWithIntent(launchIntent)
 
         provideContent {
+            val state = currentState<HomeWidgetGlanceState>()
+            val tasks = loadPendingTasks(state.preferences.getString("tasks_json", null))
             Column(
                 modifier = GlanceModifier
                     .fillMaxSize()
@@ -143,9 +148,11 @@ class TasksWidget : GlanceAppWidget() {
         }
     }
 
-    private fun loadPendingTasks(context: Context): List<TaskItem> {
-        val prefs = context.getSharedPreferences("HomeWidgetPreferences", Context.MODE_PRIVATE)
-        val raw = prefs.getString("tasks_json", null) ?: return emptyList()
+    override val stateDefinition: GlanceStateDefinition<*>
+        get() = HomeWidgetGlanceStateDefinition()
+
+    private fun loadPendingTasks(raw: String?): List<TaskItem> {
+        raw ?: return emptyList()
         return try {
             val arr = JSONArray(raw)
             List(arr.length()) { i ->

@@ -58,7 +58,9 @@ class _TasksScreenState extends State<TasksScreen> {
             _pendingSyncs--;
 
             if (event.data != null) {
-              ListUtils.syncLists(widget.tasks, event.data!.tasks);
+              if (ListUtils.syncLists(widget.tasks, event.data!.tasks)) {
+                _pushTasksToWidget();
+              }
             }
           });
         }
@@ -122,9 +124,7 @@ class _TasksScreenState extends State<TasksScreen> {
       unawaited(_syncEventInBackground(event));
     }
 
-    if (!kIsWeb && Platform.isAndroid) {
-      await _pushTasksToWidget();
-    }
+    await _pushTasksToWidget();
   }
 
   Future _syncEventInBackground(TaskEvent event) async {
@@ -152,6 +152,8 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future _pushTasksToWidget() async {
+    if (!Platform.isAndroid) return;
+
     final pending = widget.tasks.where((t) => t.doneAt == null).toList();
     final json = jsonEncode(
       pending
