@@ -4,7 +4,7 @@ publish_to: "none"
 version: 0.1.0+1
 
 environment:
-  sdk: ^3.11.4
+  sdk: ^3.12.2
 
 dependencies:
   flutter:
@@ -13,22 +13,22 @@ dependencies:
     sdk: flutter
   file_picker: ^11.0.2
   flutter_launcher_icons: ^0.14.4
-  flutter_timezone: ^5.0.2
-  timezone: ^0.11.0
-  flutter_markdown_plus: ^1.0.7
+  flutter_timezone: ^5.1.0
+  timezone: ^0.11.1
+  flutter_markdown_plus: ^1.0.12
   http: ^1.6.0
   intl: ^0.20.2
-  path_provider: ^2.1.5
+  path_provider: ^2.1.6
   shared_preferences: ^2.5.5
   url_launcher: ^6.3.2
   rrule_generator: ^0.10.1+1
   table_calendar: ^3.2.0
-  permission_handler: ^12.0.1
-  alarm: ^5.2.1
+  permission_handler: ^12.0.3
+  alarm: ^5.5.0
   home_widget: ^0.9.3
   awesome_notifications: ^0.12.1
   get_it: ^9.2.1
-  uuid: ^4.5.3
+  uuid: ^4.6.0
   collection: ^1.19.1
   rrule: ^0.2.18
   flutter_system_ringtones: ^1.1.2
