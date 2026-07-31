@@ -1,12 +1,10 @@
 import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
 import 'package:sophie/events/app_check_for_changes_event.dart';
-import 'package:sophie/events/app_logout_event.dart';
 import 'package:sophie/events/app_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_event.dart';
@@ -288,32 +286,6 @@ class _TasksScreenState extends State<TasksScreen> {
                 MaterialPageRoute(builder: (_) => const AlertManagerScreen()),
               );
               setState(() {});
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Log out',
-            onPressed: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Log out'),
-                  content: const Text('Are you sure you want to log out?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(false),
-                      child: const Text('Cancel'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.of(ctx).pop(true),
-                      child: const Text('Log out'),
-                    ),
-                  ],
-                ),
-              );
-              if (confirmed == true) {
-                await AppEventBus.instance.emit(AppLogoutEvent());
-              }
             },
           ),
         ],

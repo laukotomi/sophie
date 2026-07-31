@@ -31,6 +31,7 @@ dependencies:
   uuid: ^4.5.3
   collection: ^1.19.1
   rrule: ^0.2.18
+  flutter_system_ringtones: ^1.1.2
 
 dev_dependencies:
   flutter_test:

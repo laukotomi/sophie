@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sophie/models/dashboard_data.dart';
 import 'package:sophie/models/pending_snooze.dart';
 import 'package:sophie/models/scheduled_notification.dart';
+import 'package:sophie/models/settings.dart';
 import 'package:sophie/services/event_storage.dart';
 import 'package:sophie/services/note_events.dart';
 import 'package:sophie/services/task_events.dart';
@@ -220,5 +221,22 @@ class Storage {
     final list = _getSnoozePendings();
     if (list.isEmpty) return null;
     return list[0];
+  }
+
+  ///////////////////////////////////////////////////////////////////////////////
+  /// Settings
+  ///////////////////////////////////////////////////////////////////////////////
+  static Future setSettings(Settings settings) async {
+    await _prefs.setString('settings', jsonEncode(settings.toJson()));
+  }
+
+  static Settings? getSettings() {
+    final raw = _prefs.getString('settings');
+    if (raw == null) return null;
+    try {
+      return Settings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
   }
 }

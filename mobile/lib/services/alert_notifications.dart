@@ -9,6 +9,7 @@ import 'package:sophie/events/task_set_done_event.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/alert.dart';
 import 'package:sophie/models/scheduled_notification.dart';
+import 'package:sophie/models/settings.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/screens/snooze_picker_screen.dart';
 import 'package:sophie/services/storage.dart';
@@ -53,6 +54,7 @@ class AlertNotifications {
     List<ScheduledNotification> notifications = [];
     final now = DateTime.now();
     final mutedUntil = Storage.mutedUntil;
+    final settings = Storage.getSettings() ?? Settings();
 
     for (final alert in alerts) {
       final fireAt = _resolveFireAt(alert, taskDueAt);
@@ -67,6 +69,7 @@ class AlertNotifications {
         rescheduledAt ?? fireAt,
         taskId,
         text,
+        settings,
         alertType: muted ? AlertTypes.notification : AlertTypes.both,
       );
 
@@ -89,6 +92,7 @@ class AlertNotifications {
     String text,
   ) async {
     await _cancelByAlarmId(alarmId);
+    final settings = Storage.getSettings() ?? Settings();
 
     final muted =
         Storage.mutedUntil != null && !fireAt.isAfter(Storage.mutedUntil!);
@@ -98,6 +102,7 @@ class AlertNotifications {
       fireAt,
       taskId,
       text,
+      settings,
       alertType: muted ? AlertTypes.notification : AlertTypes.both,
     );
 
@@ -167,6 +172,7 @@ class AlertNotifications {
 
   static Future cancelMute() async {
     final alerts = Storage.getAllScheduledNotifications();
+    final settings = Storage.getSettings() ?? Settings();
     List<ScheduledNotification> updated = [];
 
     for (final alert in alerts) {
@@ -177,6 +183,7 @@ class AlertNotifications {
         alert.scheduledDateTime,
         alert.taskId,
         alert.body,
+        settings,
         alertType: AlertTypes.alarm,
       );
 
@@ -197,20 +204,21 @@ class AlertNotifications {
     int alarmId,
     DateTime fireAt,
     String taskId,
-    String text, {
+    String text,
+    Settings settings, {
     AlertTypes alertType = AlertTypes.both,
   }) async {
     if (alertType == AlertTypes.alarm || alertType == AlertTypes.both) {
       final alarmSettings = AlarmSettings(
         id: alarmId,
         dateTime: fireAt,
-        assetAudioPath: 'assets/task_alert.mp3',
+        assetAudioPath: settings.alarmSound.path,
         loopAudio: true,
-        vibrate: true,
+        vibrate: false,
         warningNotificationOnKill: Platform.isIOS,
         androidFullScreenIntent: false,
         volumeSettings: VolumeSettings.fade(
-          volume: 0.5,
+          volume: settings.alarmVolume,
           fadeDuration: Duration(seconds: 5),
           volumeEnforced: false,
         ),

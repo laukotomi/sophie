@@ -18,6 +18,7 @@ import 'package:sophie/screens/snooze_picker_screen.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/notes_screen.dart';
+import 'package:sophie/screens/settings_screen.dart';
 import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/screens/tasks_screen.dart';
 import 'package:sophie/services/storage.dart';
@@ -224,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               NotesScreen(notes: data.notes, usingCache: _usingCache),
               TasksScreen(tasks: data.tasks, usingCache: _usingCache),
+              SettingsScreen(tasks: data.tasks),
             ],
           ),
           bottomNavigationBar: NavigationBar(
@@ -232,11 +234,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
             onDestinationSelected: (index) async {
               setState(() => _selectedIndex = index);
-              await AppEventBus.instance.emit(
-                AppMenuChangedEvent(
-                  tab: index == 0 ? AppMenuTab.notes : AppMenuTab.tasks,
-                ),
-              );
+              final tab = switch (index) {
+                0 => AppMenuTab.notes,
+                1 => AppMenuTab.tasks,
+                _ => AppMenuTab.settings,
+              };
+              await AppEventBus.instance.emit(AppMenuChangedEvent(tab: tab));
             },
             destinations: const [
               NavigationDestination(
@@ -248,6 +251,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 icon: Icon(Icons.check_circle_outline),
                 selectedIcon: Icon(Icons.check_circle),
                 label: 'Tasks',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: 'Settings',
               ),
             ],
           ),
