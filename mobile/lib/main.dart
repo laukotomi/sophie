@@ -4,10 +4,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get_it/get_it.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
+import 'package:sophie/services/alerts.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/screens/home_screen.dart';
 import 'package:sophie/screens/login_screen.dart';
-import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/storage.dart';
 
 final getIt = GetIt.instance;
@@ -23,7 +23,7 @@ void main() async {
   await Storage.init();
 
   if (!kIsWeb) {
-    await AlertNotifications.init();
+    await Alerts.init();
   }
 
   runApp(
@@ -56,7 +56,7 @@ class _MainAppState extends State<MainApp> {
     }
 
     if (!kIsWeb) {
-      AlertNotifications.requestPermissions();
+      Alerts.requestPermissions();
     }
   }
 
@@ -76,7 +76,7 @@ class _MainAppState extends State<MainApp> {
     await Storage.clear();
     getIt.reset();
     if (!kIsWeb) {
-      AlertNotifications.clear();
+      Alerts.clear();
     }
     setState(() {
       _token = null;

@@ -1,47 +1,14 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:alarm/alarm.dart';
-import 'package:awesome_notifications/awesome_notifications.dart';
-import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:sophie/events/task_set_done_event.dart';
-import 'package:sophie/main.dart';
 import 'package:sophie/models/alert.dart';
 import 'package:sophie/models/scheduled_notification.dart';
 import 'package:sophie/models/settings.dart';
 import 'package:sophie/models/task.dart';
-import 'package:sophie/screens/snooze_picker_screen.dart';
+import 'package:sophie/services/alerts.dart';
 import 'package:sophie/services/storage.dart';
-import 'package:sophie/services/task_events.dart';
-
-enum AlertTypes { alarm, notification, both }
 
 class AlertNotifications {
-  static const _actionsChannelKey = 'task_alarm_actions';
-  static const _stopActionKey = 'STOP_ALARM';
-  static const _doneActionKey = 'MARK_DONE';
-  static const _snoozeActionKey = 'SNOOZE';
-
-  static Future init() async {
-    await _initAwesomeNotifications();
-    await Alarm.init();
-  }
-
-  static Future requestPermissions() async {
-    await Permission.notification.request();
-    if (Platform.isAndroid) {
-      await Permission.scheduleExactAlarm.request();
-      await Permission.ignoreBatteryOptimizations.request();
-    }
-  }
-
-  static Future clear() async {
-    await Alarm.stopAll();
-    await AwesomeNotifications().cancelAll();
-  }
-
-  static Future<List<ScheduledNotification>> scheduleAlerts(
+  static Future<List<ScheduledNotification>> scheduleAlertsForTask(
     String taskId,
     DateTime? taskDueAt,
     List<Alert> alerts,
@@ -56,17 +23,19 @@ class AlertNotifications {
     final mutedUntil = Storage.mutedUntil;
     final settings = Storage.getSettings() ?? Settings();
 
-    for (final alert in alerts) {
-      final fireAt = _resolveFireAt(alert, taskDueAt);
+    for (var i = 0; i < alerts.length; i++) {
+      final alert = alerts[i];
+      final alarmId = _notifId(taskId, i);
+
+      final rescheduledAt = rescheduledAlarms?[alarmId];
+      final fireAt = rescheduledAt ?? _resolveFireAt(alert, taskDueAt);
       if (fireAt == null || !fireAt.isAfter(now)) continue;
 
-      final alarmId = _notifId(taskId, notifications.length);
-      final rescheduledAt = rescheduledAlarms?[alarmId];
       final muted = mutedUntil != null && !fireAt.isAfter(mutedUntil);
 
-      final notification = await _setAlarmAt(
+      final notification = await Alerts.setAlarmAt(
         alarmId,
-        rescheduledAt ?? fireAt,
+        fireAt,
         taskId,
         text,
         settings,
@@ -91,13 +60,13 @@ class AlertNotifications {
     DateTime fireAt,
     String text,
   ) async {
-    await _cancelByAlarmId(alarmId);
+    await Alerts.cancelByAlarmId(alarmId);
     final settings = Storage.getSettings() ?? Settings();
 
     final muted =
         Storage.mutedUntil != null && !fireAt.isAfter(Storage.mutedUntil!);
 
-    final notification = await _setAlarmAt(
+    final notification = await Alerts.setAlarmAt(
       alarmId,
       fireAt,
       taskId,
@@ -118,14 +87,14 @@ class AlertNotifications {
         a.id: a.scheduledDateTime,
     };
 
-    await clear();
+    await Alerts.clear();
     Map<String, List<ScheduledNotification>> taskAlertsMap = {};
 
     // Schedule fresh alarms for all pending tasks.
     for (final task in freshTasks.where(
       (t) => t.doneAt == null && t.alerts.isNotEmpty,
     )) {
-      final notifications = await scheduleAlerts(
+      final notifications = await scheduleAlertsForTask(
         task.id,
         task.dueAt,
         task.alerts,
@@ -143,13 +112,13 @@ class AlertNotifications {
   static Future cancelForTask(String taskId, {bool save = true}) async {
     final alerts = Storage.getTaskAlerts(taskId);
     for (final alert in alerts) {
-      await _cancelByAlarmId(alert.id);
+      await Alerts.cancelByAlarmId(alert.id);
     }
     if (save) await Storage.removeTaskAlerts(taskId);
   }
 
   static Future cancelAlarm(ScheduledNotification alarm) async {
-    await _cancelByAlarmId(alarm.id);
+    await Alerts.cancelByAlarmId(alarm.id);
     await Storage.removeTaskAlert(alarm.taskId, alarm.id);
   }
 
@@ -160,7 +129,7 @@ class AlertNotifications {
     for (final alert in alerts) {
       if (alert.muted || alert.scheduledDateTime.isAfter(until)) continue;
 
-      await _cancelByAlarmId(alert.id, alertType: AlertTypes.alarm);
+      await Alerts.cancelByAlarmId(alert.id, alertType: AlertTypes.alarm);
       alert.muted = true;
       updated.add(alert);
     }
@@ -178,7 +147,7 @@ class AlertNotifications {
     for (final alert in alerts) {
       if (!alert.muted) continue;
 
-      await _setAlarmAt(
+      await Alerts.setAlarmAt(
         alert.id,
         alert.scheduledDateTime,
         alert.taskId,
@@ -193,100 +162,6 @@ class AlertNotifications {
 
     if (updated.isNotEmpty) {
       await Storage.updateTaskAlerts(updated);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-
-  static Future<ScheduledNotification> _setAlarmAt(
-    int alarmId,
-    DateTime fireAt,
-    String taskId,
-    String text,
-    Settings settings, {
-    AlertTypes alertType = AlertTypes.both,
-  }) async {
-    if (alertType == AlertTypes.alarm || alertType == AlertTypes.both) {
-      final alarmSettings = AlarmSettings(
-        id: alarmId,
-        dateTime: fireAt,
-        assetAudioPath: settings.alarmSound.path,
-        loopAudio: true,
-        vibrate: false,
-        warningNotificationOnKill: Platform.isIOS,
-        androidFullScreenIntent: false,
-        volumeSettings: VolumeSettings.fade(
-          volume: settings.alarmVolume,
-          fadeDuration: Duration(seconds: 5),
-          volumeEnforced: false,
-        ),
-        notificationSettings: NotificationSettings(
-          title: 'Sophie',
-          body: text,
-          stopButton: 'Stop the alarm',
-          icon: 'notification_icon',
-          iconColor: Color(0xff862778),
-        ),
-      );
-
-      await Alarm.set(alarmSettings: alarmSettings);
-    }
-
-    if (alertType == AlertTypes.notification || alertType == AlertTypes.both) {
-      await AwesomeNotifications().createNotification(
-        content: NotificationContent(
-          id: alarmId,
-          channelKey: _actionsChannelKey,
-          title: 'Sophie',
-          body: text,
-          payload: {'alarmId': '$alarmId', 'taskId': taskId},
-          autoDismissible: false,
-          wakeUpScreen: true,
-          actionType: ActionType.DisabledAction,
-        ),
-        schedule: NotificationCalendar.fromDate(
-          date: fireAt.add(Duration(seconds: 1)),
-          allowWhileIdle: true,
-          preciseAlarm: true,
-        ),
-        actionButtons: [
-          NotificationActionButton(key: _stopActionKey, label: 'Stop'),
-          NotificationActionButton(key: _doneActionKey, label: 'Mark done'),
-          NotificationActionButton(key: _snoozeActionKey, label: 'Snooze..'),
-        ],
-      );
-    }
-
-    return ScheduledNotification(
-      id: alarmId,
-      scheduledDateTime: fireAt,
-      body: text,
-      muted: alertType == AlertTypes.notification,
-      taskId: taskId,
-    );
-  }
-
-  static Future _cancelByAlarmId(
-    int alarmId, {
-    AlertTypes alertType = AlertTypes.both,
-  }) async {
-    try {
-      if (alertType == AlertTypes.alarm || alertType == AlertTypes.both) {
-        await Alarm.stop(alarmId);
-      }
-    } catch (_) {
-      // Ignore errors if the alarm was already stopped or dismissed.
-    }
-
-    try {
-      if (alertType == AlertTypes.notification ||
-          alertType == AlertTypes.both) {
-        await AwesomeNotifications().cancel(alarmId);
-      }
-    } catch (_) {
-      // Ignore errors if the notification was already dismissed.
     }
   }
 
@@ -309,82 +184,5 @@ class AlertNotifications {
       h = (((h << 5) + h) ^ c) & 0x7FFFFFFF;
     }
     return h + alertIndex;
-  }
-
-  static Future _initAwesomeNotifications() async {
-    await AwesomeNotifications().initialize(null, [
-      NotificationChannel(
-        channelGroupKey: 'sophie_tasks',
-        channelKey: _actionsChannelKey,
-        channelName: 'Task alarm actions',
-        channelDescription: 'Actions for active task alarms',
-        importance: NotificationImportance.High,
-        playSound: false,
-        enableVibration: false,
-      ),
-    ]);
-
-    AwesomeNotifications().setListeners(
-      onActionReceivedMethod: _onNotificationAction,
-      onDismissActionReceivedMethod: _onNotificationDismiss,
-    );
-  }
-
-  @pragma('vm:entry-point')
-  static Future _onNotificationAction(ReceivedAction action) async {
-    await Storage.init();
-
-    final alarmId = int.tryParse(action.payload?['alarmId'] ?? '');
-    final taskId = action.payload?['taskId'];
-    if (alarmId == null || taskId == null || action.body == null) return;
-
-    await _cancelByAlarmId(alarmId);
-
-    switch (action.buttonKeyPressed) {
-      case _stopActionKey:
-        await Storage.removeTaskAlert(taskId, alarmId);
-        break;
-
-      case _snoozeActionKey:
-        await Storage.addSnoozePending(alarmId, taskId, action.body!);
-        await navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => SnoozePickerScreen(
-              alarmId: alarmId,
-              taskId: taskId,
-              body: action.body!,
-            ),
-          ),
-        );
-        break;
-
-      case _doneActionKey:
-        await cancelForTask(taskId);
-        await TaskEventBus.instance.emit(
-          TaskSetDoneEvent(doneAt: DateTime.now(), taskId: taskId),
-        );
-
-        break;
-    }
-  }
-
-  static Future _onNotificationDismiss(ReceivedAction action) async {
-    await AwesomeNotifications().createNotification(
-      content: NotificationContent(
-        id: action.id!,
-        channelKey: _actionsChannelKey,
-        title: 'Sophie',
-        body: action.body,
-        payload: action.payload,
-        autoDismissible: false,
-        wakeUpScreen: true,
-        actionType: ActionType.DisabledAction,
-      ),
-      actionButtons: [
-        NotificationActionButton(key: _stopActionKey, label: 'Stop'),
-        NotificationActionButton(key: _doneActionKey, label: 'Mark done'),
-        NotificationActionButton(key: _snoozeActionKey, label: 'Snooze..'),
-      ],
-    );
   }
 }

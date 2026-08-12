@@ -117,7 +117,12 @@ class TaskSavedEvent extends TaskEvent {
     }
 
     if (!kIsWeb) {
-      await AlertNotifications.scheduleAlerts(taskId, dueAt, alerts, text);
+      await AlertNotifications.scheduleAlertsForTask(
+        taskId,
+        dueAt,
+        alerts,
+        text,
+      );
     }
 
     setState(() {

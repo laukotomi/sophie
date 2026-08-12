@@ -56,7 +56,7 @@ class TaskSetDoneEvent extends TaskEvent {
       if (doneAt != null) {
         await AlertNotifications.cancelForTask(task.id);
       } else {
-        await AlertNotifications.scheduleAlerts(
+        await AlertNotifications.scheduleAlertsForTask(
           task.id,
           task.dueAt,
           task.alerts,

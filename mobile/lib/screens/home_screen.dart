@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sophie/events/app_check_for_changes_event.dart';
 import 'package:sophie/events/app_logout_event.dart';
-import 'package:sophie/events/app_menu_changed_event.dart';
 import 'package:sophie/events/app_data_change_event.dart';
 import 'package:sophie/events/app_offline_mode_changed_event.dart';
 import 'package:sophie/events/app_sync_conflict_event.dart';
@@ -232,14 +231,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             selectedIndex: _selectedIndex,
             height: 64,
             labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-            onDestinationSelected: (index) async {
+            onDestinationSelected: (index) {
               setState(() => _selectedIndex = index);
-              final tab = switch (index) {
-                0 => AppMenuTab.notes,
-                1 => AppMenuTab.tasks,
-                _ => AppMenuTab.settings,
-              };
-              await AppEventBus.instance.emit(AppMenuChangedEvent(tab: tab));
             },
             destinations: const [
               NavigationDestination(

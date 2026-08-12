@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:sophie/events/app_menu_changed_event.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/note.dart';
 import 'package:sophie/screens/add_note_screen.dart';
@@ -42,16 +41,23 @@ class _NoteCardState extends State<NoteCard> {
   void initState() {
     super.initState();
     widget.scrollController.addListener(_onScroll);
-    _appEventSub = AppEventBus.instance.listen((event) async {
-      if (event is AppMenuChangedEvent && event.tab != AppMenuTab.notes) {
-        if (_overlayController.isShowing) _overlayController.hide();
-      }
-    });
+    widget.scrollController.position.isScrollingNotifier.addListener(
+      positionNotifierListener,
+    );
+  }
+
+  void positionNotifierListener() {
+    if (!widget.scrollController.position.isScrollingNotifier.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
+    }
   }
 
   @override
   void dispose() {
     widget.scrollController.removeListener(_onScroll);
+    widget.scrollController.position.isScrollingNotifier.removeListener(
+      positionNotifierListener,
+    );
     _appEventSub.cancel();
     super.dispose();
   }
@@ -61,6 +67,7 @@ class _NoteCardState extends State<NoteCard> {
       if (_overlayController.isShowing) _overlayController.hide();
       return;
     }
+
     final canEdit = widget.note.isOwner || widget.note.right == 'edit';
     if (!canEdit) return;
 
@@ -82,7 +89,7 @@ class _NoteCardState extends State<NoteCard> {
     // Float when the edit button itself (16px padding + ~40px compact button = 56px
     // from card top) has scrolled behind the AppBar, but the card is still visible.
     final shouldFloat =
-        cardTop < viewTop && cardBottom > viewTop + kToolbarHeight + 75;
+        cardTop < 14 && cardBottom > viewTop + kToolbarHeight + 75;
 
     debugPrint(
       '[NoteCard] cardTop=$cardTop cardBottom=$cardBottom '
@@ -229,11 +236,12 @@ class _NoteCardState extends State<NoteCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  Expanded(child: _buildNoteBody()),
-                  if (canEdit) _editButton(context),
+                  _buildNoteBody(),
+                  if (canEdit)
+                    Positioned(top: 0, right: 0, child: _editButton(context)),
                 ],
               ),
               const SizedBox(height: 8),
