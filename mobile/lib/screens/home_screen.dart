@@ -222,7 +222,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           body: IndexedStack(
             index: _selectedIndex,
             children: [
-              NotesScreen(notes: data.notes, usingCache: _usingCache),
+              NotesScreen(
+                notes: data.notes,
+                usingCache: _usingCache,
+                isActive: _selectedIndex == 0,
+              ),
               TasksScreen(tasks: data.tasks, usingCache: _usingCache),
               SettingsScreen(tasks: data.tasks),
             ],

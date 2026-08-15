@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show unawaited, Timer;
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -36,10 +36,12 @@ class _TasksScreenState extends State<TasksScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late final EventSubscription<TaskEvent> _taskEventSub;
   late final AppEventSubscription _appEventSub;
+  Timer? _syncSuccessTimer;
 
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   int _pendingSyncs = 0;
+  bool _showSyncSuccess = false;
 
   @override
   void initState() {
@@ -68,6 +70,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   void dispose() {
+    _syncSuccessTimer?.cancel();
     _taskEventSub.cancel();
     _appEventSub.cancel();
     super.dispose();
@@ -75,6 +78,14 @@ class _TasksScreenState extends State<TasksScreen> {
 
   void _safeSetState(VoidCallback fn) {
     if (mounted) setState(fn);
+  }
+
+  void _markSyncSuccess() {
+    _syncSuccessTimer?.cancel();
+    _safeSetState(() => _showSyncSuccess = true);
+    _syncSuccessTimer = Timer(const Duration(milliseconds: 1500), () {
+      _safeSetState(() => _showSyncSuccess = false);
+    });
   }
 
   Future _syncTaskChanges() async {
@@ -129,6 +140,7 @@ class _TasksScreenState extends State<TasksScreen> {
     try {
       await event.sync(widget.tasks, _safeSetState);
       await Storage.taskEvents.removeEvent(event.eventId);
+      _markSyncSuccess();
     } catch (e) {
       await Storage.taskEvents.addOrUpdateEvent(event);
       await _handleSyncError(e);
@@ -256,12 +268,17 @@ class _TasksScreenState extends State<TasksScreen> {
         actions: [
           if (_pendingSyncs > 0)
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
+              padding: EdgeInsets.all(8),
               child: SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
+            ),
+          if (_pendingSyncs == 0 && _showSyncSuccess)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: Icon(Icons.check_circle, color: Colors.green),
             ),
           if (widget.usingCache)
             Tooltip(

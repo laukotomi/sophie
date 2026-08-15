@@ -21,7 +21,7 @@ class BackendClient {
   final String baseUrl;
   String? _token;
 
-  BackendClient({required this.baseUrl, String? token}) : _token = token;
+  BackendClient({required this.baseUrl, this._token});
 
   Future _checkUnauthorized(int statusCode) async {
     if (statusCode == 401) {

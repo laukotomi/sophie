@@ -21,8 +21,14 @@ import 'package:sophie/widgets/note_card.dart';
 class NotesScreen extends StatefulWidget {
   final List<Note> notes;
   final bool usingCache;
+  final bool isActive;
 
-  const NotesScreen({super.key, required this.notes, required this.usingCache});
+  const NotesScreen({
+    super.key,
+    required this.notes,
+    required this.usingCache,
+    required this.isActive,
+  });
 
   @override
   State<NotesScreen> createState() => _NotesScreenState();
@@ -33,9 +39,11 @@ class _NotesScreenState extends State<NotesScreen> {
   final _scrollController = ScrollController();
   late final EventSubscription<NoteEvent> _noteEventSub;
   late final AppEventSubscription _appEventSub;
+  Timer? _syncSuccessTimer;
 
   String? _selectedTag;
   int _pendingSyncs = 0;
+  bool _showSyncSuccess = false;
 
   // Matches #tag (word chars directly after #, no space — distinguishes from markdown headings)
   final _tagRegex = RegExp(
@@ -76,10 +84,19 @@ class _NotesScreenState extends State<NotesScreen> {
 
   @override
   void dispose() {
+    _syncSuccessTimer?.cancel();
     _scrollController.dispose();
     _noteEventSub.cancel();
     _appEventSub.cancel();
     super.dispose();
+  }
+
+  void _markSyncSuccess() {
+    _syncSuccessTimer?.cancel();
+    _safeSetState(() => _showSyncSuccess = true);
+    _syncSuccessTimer = Timer(const Duration(milliseconds: 1500), () {
+      _safeSetState(() => _showSyncSuccess = false);
+    });
   }
 
   Future _syncNoteChanges() async {
@@ -142,6 +159,7 @@ class _NotesScreenState extends State<NotesScreen> {
     try {
       await event.sync(widget.notes, _safeSetState);
       await Storage.noteEvents.removeEvent(event.eventId);
+      _markSyncSuccess();
     } catch (e) {
       await Storage.noteEvents.addOrUpdateEvent(event);
       await _handleSyncError(e);
@@ -231,12 +249,17 @@ class _NotesScreenState extends State<NotesScreen> {
         actions: [
           if (_pendingSyncs > 0)
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
+            ),
+          if (_pendingSyncs == 0 && _showSyncSuccess)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Icon(Icons.check_circle, color: Colors.green),
             ),
           if (widget.usingCache)
             Tooltip(
@@ -305,6 +328,7 @@ class _NotesScreenState extends State<NotesScreen> {
                       return NoteCard(
                         note: note,
                         scrollController: _scrollController,
+                        allowOverlay: widget.isActive,
                       );
                     },
                   ),

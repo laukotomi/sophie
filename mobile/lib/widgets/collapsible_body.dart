@@ -39,12 +39,10 @@ class CollapsibleBody extends SingleChildRenderObjectWidget {
 
 class RenderCollapsibleBody extends RenderProxyBox {
   RenderCollapsibleBody({
-    required double maxHeight,
-    required bool collapsed,
-    required void Function(bool) onOverflowDetected,
-  }) : _maxHeight = maxHeight,
-       _collapsed = collapsed,
-       _onOverflowDetected = onOverflowDetected;
+    required this._maxHeight,
+    required this._collapsed,
+    required this._onOverflowDetected,
+  });
 
   double _maxHeight;
   double get maxHeight => _maxHeight;

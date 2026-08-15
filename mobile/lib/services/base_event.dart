@@ -55,7 +55,7 @@ abstract class BaseEventBus<T extends BaseEvent> {
   EventSubscription<T> listen(Future Function(T) handler) {
     handlers.add(handler);
     _emitUnappliedEvents();
-    return EventSubscription._(handlers, handler);
+    return EventSubscription(handlers, handler);
   }
 
   Future emit(T event) async {
@@ -77,7 +77,7 @@ class EventSubscription<T extends BaseEvent> {
   final List<Future Function(T)> _handlers;
   final Future Function(T) _handler;
 
-  EventSubscription._(this._handlers, this._handler);
+  EventSubscription(this._handlers, this._handler);
 
   void cancel() => _handlers.remove(_handler);
 }

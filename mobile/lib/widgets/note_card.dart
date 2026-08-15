@@ -3,7 +3,6 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:sophie/main.dart';
 import 'package:sophie/models/note.dart';
 import 'package:sophie/screens/add_note_screen.dart';
-import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/backend_note.dart';
 import 'package:sophie/widgets/collapsible_body.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -13,11 +12,13 @@ import 'package:sophie/widgets/note_chip.dart';
 class NoteCard extends StatefulWidget {
   final Note note;
   final ScrollController scrollController;
+  final bool allowOverlay;
 
   const NoteCard({
     super.key,
     required this.note,
     required this.scrollController,
+    required this.allowOverlay,
   });
 
   @override
@@ -27,7 +28,6 @@ class NoteCard extends StatefulWidget {
 class _NoteCardState extends State<NoteCard> {
   final _cardKey = GlobalKey();
   final _overlayController = OverlayPortalController();
-  late final AppEventSubscription _appEventSub;
   double _overlayTop = 0;
   double _overlayLeft = 0;
   bool _acquiringLock = false;
@@ -58,12 +58,11 @@ class _NoteCardState extends State<NoteCard> {
     widget.scrollController.position.isScrollingNotifier.removeListener(
       positionNotifierListener,
     );
-    _appEventSub.cancel();
     super.dispose();
   }
 
   void _onScroll() {
-    if (!mounted) {
+    if (!mounted || !widget.allowOverlay) {
       if (_overlayController.isShowing) _overlayController.hide();
       return;
     }
