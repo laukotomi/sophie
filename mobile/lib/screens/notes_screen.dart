@@ -35,6 +35,8 @@ class NotesScreen extends StatefulWidget {
 }
 
 class _NotesScreenState extends State<NotesScreen> {
+  static const String archivedTag = 'archived';
+
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _scrollController = ScrollController();
   late final EventSubscription<NoteEvent> _noteEventSub;
@@ -212,7 +214,7 @@ class _NotesScreenState extends State<NotesScreen> {
                           ...sorted.map(
                             (tag) => ListTile(
                               leading: const Icon(Icons.tag),
-                              title: Text('#$tag'),
+                              title: Text(tag),
                               selected: _selectedTag == tag,
                               onTap: () {
                                 setState(() => _selectedTag = tag);
@@ -294,6 +296,8 @@ class _NotesScreenState extends State<NotesScreen> {
         builder: (context) {
           final filtered = _selectedTag == null
               ? widget.notes
+                    .where((n) => !_extractTags(n.text).contains(archivedTag))
+                    .toList()
               : widget.notes
                     .where((n) => _extractTags(n.text).contains(_selectedTag))
                     .toList();

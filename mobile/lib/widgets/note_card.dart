@@ -46,6 +46,26 @@ class _NoteCardState extends State<NoteCard> {
     );
   }
 
+  @override
+  void didUpdateWidget(covariant NoteCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.scrollController != widget.scrollController) {
+      oldWidget.scrollController.removeListener(_onScroll);
+      oldWidget.scrollController.position.isScrollingNotifier.removeListener(
+        positionNotifierListener,
+      );
+      widget.scrollController.addListener(_onScroll);
+      widget.scrollController.position.isScrollingNotifier.addListener(
+        positionNotifierListener,
+      );
+    }
+
+    if (oldWidget.allowOverlay != widget.allowOverlay) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
+    }
+  }
+
   void positionNotifierListener() {
     if (!widget.scrollController.position.isScrollingNotifier.value) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
@@ -90,11 +110,11 @@ class _NoteCardState extends State<NoteCard> {
     final shouldFloat =
         cardTop < 14 && cardBottom > viewTop + kToolbarHeight + 75;
 
-    debugPrint(
-      '[NoteCard] cardTop=$cardTop cardBottom=$cardBottom '
-      'viewTop=$viewTop buttonBottom=${cardTop + 56} '
-      'shouldFloat=$shouldFloat isShowing=${_overlayController.isShowing}',
-    );
+    // debugPrint(
+    //   '[NoteCard] cardTop=$cardTop cardBottom=$cardBottom '
+    //   'viewTop=$viewTop buttonBottom=${cardTop + 56} '
+    //   'shouldFloat=$shouldFloat isShowing=${_overlayController.isShowing}',
+    // );
 
     if (shouldFloat && !_overlayController.isShowing) {
       const horizontalInset = 16.0;
