@@ -1,16 +1,22 @@
 import { db } from './db/index.js';
 import { task, taskCollaborator, taskAlert } from './db/schema.js';
 import { and, eq } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { TaskData } from './models.js';
 
-export async function editOrCreateTask(
+type Task = typeof task.$inferSelect;
+
+type ExtraFieldColumns = {
+    [K in keyof Task]?: AnyPgColumn<{ data: Task[K] }>;
+};
+
+export async function upsertTask(
     userId: string,
-    isEdit: boolean,
     taskData: TaskData,
 ) {
-    console.log(`START editOrCreateTask - userId: ${userId}, operation: ${isEdit ? 'edit' : 'create'}, taskId: ${taskData.taskId}`);
-    if (isEdit)
-        await assertEditAccess(userId, taskData.taskId);
+    console.log(`START upsertTask - userId: ${userId}, taskId: ${taskData.taskId}`);
+
+    await assertEditAccessIfExists(userId, taskData.taskId);
 
     const taskDbData = {
         text: taskData.text,
@@ -21,28 +27,23 @@ export async function editOrCreateTask(
     }
 
     await db.transaction(async (tx) => {
-        if (isEdit) {
-            await tx.update(task)
-                .set({
+        await tx.insert(task).values({
+            id: taskData.taskId,
+            owner: userId,
+            createdAt: taskData.timestamp,
+            updatedAt: taskData.timestamp,
+            ...taskDbData
+        })
+            .onConflictDoUpdate({
+                target: [task.id],
+                set: {
                     updatedAt: taskData.timestamp,
-                    ...taskDbData
-                })
-                .where(eq(task.id, taskData.taskId));
-        }
-        else {
-            await tx.insert(task).values({
-                id: taskData.taskId,
-                owner: userId,
-                createdAt: taskData.timestamp,
-                updatedAt: taskData.timestamp,
-                ...taskDbData
+                    ...taskDbData,
+                },
             });
-        }
 
-        if (isEdit) {
-            await tx.delete(taskCollaborator).where(eq(taskCollaborator.taskId, taskData.taskId));
-            await tx.delete(taskAlert).where(eq(taskAlert.taskId, taskData.taskId));
-        }
+        await tx.delete(taskCollaborator).where(eq(taskCollaborator.taskId, taskData.taskId));
+        await tx.delete(taskAlert).where(eq(taskAlert.taskId, taskData.taskId));
 
         if (taskData.collaboratorIds.length > 0) {
             await tx.insert(taskCollaborator).values(
@@ -65,16 +66,25 @@ export async function editOrCreateTask(
 
 export async function deleteTask(userId: string, taskId: string): Promise<void> {
     console.log(`START deleteTask - userId: ${userId}, taskId: ${taskId}`);
-    await assertEditAccess(userId, taskId);
+
+    await assertEditAccessIfExists(userId, taskId);
     await db.delete(task).where(eq(task.id, taskId));
+
     console.log(`SUCCESS - Task deleted`);
 }
 
-export async function deleteTaskGroup(userId: string, taskId: string): Promise<void> {
+export async function deleteTaskGroup(userId: string, taskId: string) {
     console.log(`START deleteTaskGroup - userId: ${userId}, taskId: ${taskId}`);
-    const existing = await assertEditAccess(userId, taskId);
-    if (existing.recurringGroupId) {
-        await db.delete(task).where(eq(task.recurringGroupId, existing.recurringGroupId));
+
+    const existing = await assertEditAccessIfExists(userId, taskId, { recurringGroupId: task.recurringGroupId });
+
+    if (existing?.recurringGroupId) {
+        await db.delete(task).where(
+            and(
+                eq(task.recurringGroupId, existing.recurringGroupId),
+                eq(task.owner, userId),
+            ),
+        );
     }
     console.log(`SUCCESS - Task group deleted`);
 }
@@ -85,25 +95,28 @@ export async function setTaskDone(
     doneAt: Date | null,
 ) {
     console.log(`START setTaskDone - userId: ${userId}, taskId: ${taskId}, doneAt: ${doneAt?.toISOString() ?? 'null'}`);
-    await assertViewAccess(userId, taskId);
+    const existing = await assertViewAccessIfExists(userId, taskId);
 
-    await db.update(task)
-        .set({ doneAt: doneAt })
-        .where(and(eq(task.id, taskId)));
+    if (existing) {
+        await db.update(task)
+            .set({ doneAt: doneAt })
+            .where(and(eq(task.id, taskId)));
+    }
+
     console.log(`SUCCESS - Task done status updated`);
 }
 
-async function assertEditAccess(userId: string, taskId: string) {
+async function assertEditAccessIfExists<TExtra extends ExtraFieldColumns = {}>(
+    userId: string,
+    taskId: string,
+    extraFields: TExtra = {} as TExtra,
+) {
     const [existing] = await db
-        .select({ id: task.id, owner: task.owner, recurringGroupId: task.recurringGroupId })
+        .select({ owner: task.owner, ...extraFields })
         .from(task)
         .where(eq(task.id, taskId));
 
-    if (!existing) {
-        console.error(`Task not found: ${taskId}`);
-        throw new Error('Task not found');
-    }
-    if (existing.owner !== userId) {
+    if (existing && existing.owner !== userId) {
         console.error(`Access denied - Owner: ${existing.owner}, Requester: ${userId}`);
         throw new Error('Forbidden');
     }
@@ -111,7 +124,7 @@ async function assertEditAccess(userId: string, taskId: string) {
     return existing;
 }
 
-async function assertViewAccess(userId: string, taskId: string) {
+async function assertViewAccessIfExists(userId: string, taskId: string) {
     const [existing] = await db
         .select({
             owner: task.owner,
@@ -119,12 +132,7 @@ async function assertViewAccess(userId: string, taskId: string) {
         .from(task)
         .where(eq(task.id, taskId));
 
-    if (!existing) {
-        console.error(`Task not found: ${taskId}`);
-        throw new Error('Task not found');
-    }
-
-    if (existing.owner !== userId) {
+    if (existing && existing.owner !== userId) {
         const [collab] = await db
             .select({ id: taskCollaborator.id })
             .from(taskCollaborator)
@@ -134,6 +142,7 @@ async function assertViewAccess(userId: string, taskId: string) {
                     eq(taskCollaborator.userId, userId),
                 ),
             );
+
         if (!collab) {
             console.error(`Access denied - Not a collaborator on task ${taskId}`);
             throw new Error('Forbidden');

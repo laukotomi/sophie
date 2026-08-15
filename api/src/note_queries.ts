@@ -6,24 +6,42 @@ import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { noteDirPath, noteFilePath } from './utils.js';
-import { NoteFormData } from './models.js';
+import { NoteFormData, UploadedFile } from './models.js';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 
 const noteHistoryLimit = 50;
+const lockTimeoutMs = 60_000;
+
+type Note = typeof note.$inferSelect;
+
+type ExtraFieldColumns = {
+    [K in keyof Note]?: AnyPgColumn<{ data: Note[K] }>;
+};
 
 type Tx = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
-type Db = typeof db;
-type UploadedFile = { id: string; name: string; type: string; size: number };
 
-export async function editOrCreateNote(
+export async function upsertNote(
     userId: string,
-    isEdit: boolean,
     noteData: NoteFormData
 ) {
-    console.log(`START editOrCreateNote - userId: ${userId}, operation: ${isEdit ? 'edit' : 'create'}, noteId: ${noteData.noteId}`);
+    console.log(`START upsertNote - userId: ${userId}, noteId: ${noteData.noteId}`);
+
+    const existing = await assertEditAccessIfExists(noteData.noteId, userId, {
+        lockedUntil: note.lockedUntil,
+        editingBy: note.editingBy,
+        text: note.text,
+    });
+
+    if (existing?.lockedUntil) {
+        const lockTimeout = new Date(Date.now() + lockTimeoutMs);
+        if (existing.lockedUntil < lockTimeout && existing.editingBy !== userId) {
+            throw new Error('Lock required');
+        }
+    }
 
     // Upload files to disk before the transaction so we don't hold the DB
     // connection open during slow I/O. If the transaction later fails we clean up.
-    const { uploadedFiles } = await uploadFiles(noteData.noteId, noteData.files);
+    const uploadedFiles = await uploadFiles(noteData.noteId, noteData.files);
     console.log(`Uploaded ${uploadedFiles.length} files`);
 
     const noteDbData = {
@@ -35,39 +53,31 @@ export async function editOrCreateNote(
 
     try {
         await db.transaction(async (tx) => {
-
-            if (isEdit) {
-                console.log(`Edit mode - checking access for noteId: ${noteData.noteId}`);
-                const existing = await assertEditAccess(tx, noteData.noteId, userId);
-
-                const holdsLock = existing.editingBy === userId;
-                console.log(`User holds lock: ${holdsLock}`);
-                if (!holdsLock) throw new Error('Lock required');
-
+            if (existing) {
                 await saveNoteBackup(tx, noteData.noteId, existing.text);
+            }
 
-                await tx
-                    .update(note)
-                    .set({
+            await tx
+                .insert(note)
+                .values({
+                    id: noteData.noteId,
+                    createdAt: noteData.timestamp,
+                    updatedAt: noteData.timestamp,
+                    owner: userId,
+                    ...noteDbData,
+                })
+                .onConflictDoUpdate({
+                    target: [note.id],
+                    set: {
                         editingBy: null,
                         lockedUntil: null,
                         updatedAt: noteData.timestamp,
-                        ...noteDbData
-                    })
-                    .where(eq(note.id, noteData.noteId));
-
-                await tx.delete(collaborator).where(eq(collaborator.noteId, noteData.noteId));
-            } else {
-                await tx
-                    .insert(note)
-                    .values({
-                        id: noteData.noteId,
-                        createdAt: noteData.timestamp,
-                        updatedAt: noteData.timestamp,
-                        owner: userId,
                         ...noteDbData,
-                    });
-            }
+                    },
+                });
+
+
+            await tx.delete(collaborator).where(eq(collaborator.noteId, noteData.noteId));
 
             if (noteData.collaborators && noteData.collaborators.length > 0) {
                 await tx.insert(collaborator).values(
@@ -85,7 +95,7 @@ export async function editOrCreateNote(
                         and(
                             eq(noteOrder.userId, userId),
                             gte(noteOrder.position, noteData.fixedPosition),
-                            ...(isEdit ? [sql`${noteOrder.noteId} != ${noteData.noteId}`] : []),
+                            ...(existing ? [sql`${noteOrder.noteId} != ${noteData.noteId}`] : []),
                         ),
                     );
 
@@ -114,6 +124,7 @@ export async function editOrCreateNote(
                 );
             }
         });
+
         console.log(`Transaction committed successfully`);
     } catch (e) {
         console.error(`Transaction failed:`, e);
@@ -129,12 +140,20 @@ export async function editOrCreateNote(
 
 export async function acquireNoteLock(userId: string, noteId: string) {
     console.log(`START acquireNoteLock - userId: ${userId}, noteId: ${noteId}`);
-    return db.transaction(async (tx) => {
-        const existing = await assertEditAccess(tx, noteId, userId);
-        console.log(`Current lock state - editingBy: ${existing.editingBy}, lockedUntil: ${existing.lockedUntil}`);
+    const existing = await assertEditAccessIfExists(noteId, userId, {
+        editingBy: note.editingBy,
+        text: note.text,
+        updatedAt: note.updatedAt,
+    });
 
+    if (!existing) {
+        console.error(`FAILED - Note not found`);
+        throw new Error('Note not found');
+    }
+
+    return db.transaction(async (tx) => {
         const now = new Date();
-        const lockedUntil = new Date(now.getTime() + 60_000);
+        const lockedUntil = new Date(now.getTime() + lockTimeoutMs);
 
         // Atomically acquire: succeed if unlocked, expired, or already held by this user.
         const updated = await tx
@@ -149,12 +168,8 @@ export async function acquireNoteLock(userId: string, noteId: string) {
             .returning({ id: note.id });
 
         if (updated.length === 0) {
-            const [locked] = await tx
-                .select({ editingBy: note.editingBy })
-                .from(note)
-                .where(eq(note.id, noteId));
-            console.error(`FAILED - Lock held by: ${locked?.editingBy ?? 'unknown'}`);
-            throw new Error(`Locked:${locked?.editingBy ?? 'unknown'}`);
+            console.error(`FAILED - Lock held by: ${existing.editingBy}`);
+            throw new Error(`Locked: ${existing.editingBy}`);
         }
 
         console.log(`SUCCESS - Lock acquired for ${userId}`);
@@ -168,16 +183,19 @@ export async function acquireNoteLock(userId: string, noteId: string) {
 
 export async function releaseNoteLock(userId: string, noteId: string): Promise<void> {
     console.log(`START releaseNoteLock - userId: ${userId}, noteId: ${noteId}`);
+
     await db
         .update(note)
         .set({ editingBy: null, lockedUntil: null })
         .where(and(eq(note.id, noteId), eq(note.editingBy, userId)));
+
     console.log(`Lock released`);
 }
 
 export async function refreshNoteLock(userId: string, noteId: string): Promise<void> {
     console.log(`START refreshNoteLock - userId: ${userId}, noteId: ${noteId}`);
-    const lockedUntil = new Date(Date.now() + 60_000);
+
+    const lockedUntil = new Date(Date.now() + lockTimeoutMs);
     const updated = await db
         .update(note)
         .set({ lockedUntil })
@@ -188,33 +206,33 @@ export async function refreshNoteLock(userId: string, noteId: string): Promise<v
         console.error(`FAILED - No lock held by user ${userId}`);
         throw new Error('Lock not held');
     }
+
     console.log(`SUCCESS - Lock refreshed until ${lockedUntil.toISOString()}`);
 }
 
 export async function getNoteHistory(userId: string, noteId: string): Promise<Array<{ id: number; text: string; createdAt: Date }>> {
     console.log(`START getNoteHistory - userId: ${userId}, noteId: ${noteId}`);
-    await assertEditAccess(db, noteId, userId);
+    await assertEditAccessIfExists(noteId, userId);
+
     const history = await db
         .select({ id: noteHistory.id, text: noteHistory.text, createdAt: noteHistory.createdAt })
         .from(noteHistory)
         .where(eq(noteHistory.noteId, noteId))
         .orderBy(desc(noteHistory.createdAt));
+
     console.log(`Retrieved ${history.length} history entries`);
     return history;
 }
 
 export async function deleteNote(userId: string, noteId: string): Promise<void> {
     console.log(`START deleteNote - userId: ${userId}, noteId: ${noteId}`);
+
     const [existing] = await db
-        .select({ id: note.id, owner: note.owner })
+        .select({ owner: note.owner })
         .from(note)
         .where(eq(note.id, noteId));
 
-    if (!existing) {
-        console.error(`FAILED - Note not found`);
-        throw new Error('Note not found');
-    }
-    if (existing.owner !== userId) {
+    if (existing && existing.owner !== userId) {
         console.error(`FAILED - Forbidden. Owner: ${existing.owner}, Requester: ${userId}`);
         throw new Error('Forbidden');
     }
@@ -230,16 +248,17 @@ export async function deleteNote(userId: string, noteId: string): Promise<void> 
     if (files.length > 0) {
         await rm(noteDirPath(noteId), { recursive: true, force: true });
     }
+
     console.log(`SUCCESS - Note and files deleted`);
 }
 
 async function uploadFiles(
     noteId: string,
     files?: { id: string; name: string; type: string; size: number; stream: ReadableStream<Uint8Array> }[],
-): Promise<{ uploadedFiles: UploadedFile[] }> {
+) {
     if (!files || files.length === 0) {
         console.log(`No files to upload`);
-        return { uploadedFiles: [] };
+        return [];
     }
 
     console.log(`Starting upload for ${files.length} files to noteId: ${noteId}`);
@@ -257,36 +276,35 @@ async function uploadFiles(
     }
 
     console.log(`All ${uploadedFiles.length} files uploaded successfully`);
-    return { uploadedFiles };
+    return uploadedFiles;
 }
 
-async function assertEditAccess(
-    tx: Tx | Db,
+async function assertEditAccessIfExists<TExtra extends ExtraFieldColumns = {}>(
     noteId: string,
     userId: string,
-): Promise<{ id: string; owner: string; text: string; editingBy: string | null; lockedUntil: Date | null; updatedAt: Date }> {
-    const [existing] = await tx
-        .select({ id: note.id, owner: note.owner, text: note.text, editingBy: note.editingBy, lockedUntil: note.lockedUntil, updatedAt: note.updatedAt })
+    extraFields: TExtra = {} as TExtra,
+) {
+    const [existing] = await db
+        .select({ owner: note.owner, ...extraFields })
         .from(note)
         .where(eq(note.id, noteId));
 
-    if (!existing) {
-        console.error(`Note not found: ${noteId}`);
-        throw new Error('Note not found');
-    }
-
-    const isOwner = existing.owner === userId;
-
-    if (!isOwner) {
-        const [collab] = await tx
+    if (existing && existing.owner !== userId) {
+        const [collab] = await db
             .select({ right: collaborator.right })
             .from(collaborator)
             .where(and(eq(collaborator.noteId, noteId), eq(collaborator.userId, userId)));
 
-        if (!collab || collab.right !== 'edit') {
+        if (!collab) {
+            console.error(`Access denied - Not a collaborator on note ${noteId}`);
+            throw new Error('Forbidden');
+        }
+
+        if (collab.right !== 'edit') {
             console.error(`Access denied - No edit permission for user ${userId} on note ${noteId}`);
             throw new Error('Forbidden');
         }
+
         console.log(`Access allowed - Collaborator with edit right`);
     }
 

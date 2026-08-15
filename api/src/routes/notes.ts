@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { editOrCreateNote, deleteNote, acquireNoteLock, releaseNoteLock, refreshNoteLock, getNoteHistory } from '../note_queries.js';
+import { upsertNote, deleteNote, acquireNoteLock, releaseNoteLock, refreshNoteLock, getNoteHistory } from '../note_queries.js';
 import { requireAuth, type AuthVariables } from '../middleware.js';
 import { CollaboratorInfo, NoteFormData } from '../models.js';
 
@@ -62,10 +62,11 @@ notes.post('/', async (c) => {
     if (!parsed) return c.json({ error: 'Invalid form data' }, 400);
 
     try {
-        await editOrCreateNote(user.id, false, parsed);
+        await upsertNote(user.id, parsed);
     } catch (e) {
         console.error('[POST /api/notes] editOrCreateNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
+        if (message === 'Lock required') return c.json({ error: message }, 409);
         return c.json({ error: message }, 500);
     }
 
@@ -79,7 +80,7 @@ notes.put('/', async (c) => {
     if (!parsed) return c.json({ error: 'Invalid form data' }, 400);
 
     try {
-        await editOrCreateNote(user.id, true, parsed);
+        await upsertNote(user.id, parsed);
     } catch (e) {
         console.error('[PUT /api/notes] editOrCreateNote failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';

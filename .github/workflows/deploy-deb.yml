@@ -36,6 +36,9 @@ jobs:
 
       - name: Build
         run: |
+          npm ci
+          npm run test
+
           mkdir build
           cp package*.json build/
           cp -r src build/

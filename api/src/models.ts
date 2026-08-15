@@ -16,25 +16,32 @@ export type NoteFile = {
     type: string;
     size: number;
     stream: ReadableStream<Uint8Array>;
-}
+};
 
 export type CollaboratorInfo = {
     userId: string;
     right: 'view' | 'edit';
-}
+};
 
 export type TaskData = {
     taskId: string;
     text: string;
     rrule: string | null;
     color: string | null;
-    dueAt: string;
+    dueAt: string | null;
     collaboratorIds: string[];
     alerts: AlertInput[];
     recurringGroupId: string | null;
     timestamp: Date;
-}
+};
 
 export type AlertInput =
     | { type: 'absolute'; alertAt: Date }
     | { type: 'relative'; timeBefore: string };
+
+export type UploadedFile = {
+    id: string;
+    name: string;
+    type: string;
+    size: number;
+};

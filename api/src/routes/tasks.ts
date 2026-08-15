@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { requireAuth, type AuthVariables } from '../middleware.js';
-import { deleteTask, deleteTaskGroup, editOrCreateTask, setTaskDone } from '../task_queries.js';
+import { deleteTask, deleteTaskGroup, upsertTask, setTaskDone } from '../task_queries.js';
 import { parseDateISOString } from '../utils.js';
 import { TaskData, AlertInput } from '../models.js';
 
@@ -17,7 +17,7 @@ async function parseAlertsForm(body: any): Promise<TaskData | null> {
     if (typeof body.dueAt === 'string' && body.dueAt) {
         dueAt = parseDateISOString(body.dueAt);
         if (isNaN(dueAt.getTime())) {
-            return null;
+            throw new Error('Invalid dueAt date format. Expected ISO 8601 string.');
         }
     }
 
@@ -71,7 +71,7 @@ tasks.post('/', async (c) => {
     }
 
     try {
-        await editOrCreateTask(user.id, false, parsed);
+        await upsertTask(user.id, parsed);
     } catch (e) {
         console.error('[POST /api/tasks] createTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
@@ -96,11 +96,10 @@ tasks.put('/', async (c) => {
     }
 
     try {
-        await editOrCreateTask(user.id, true, parsed);
+        await upsertTask(user.id, parsed);
     } catch (e) {
         console.error('[PUT /api/tasks] updateTask failed:', e);
         const message = e instanceof Error ? e.message : 'Unknown error';
-        if (message === 'Task not found') return c.json({ error: message }, 404);
         if (message === 'Forbidden') return c.json({ error: message }, 403);
         return c.json({ error: message }, 500);
     }
