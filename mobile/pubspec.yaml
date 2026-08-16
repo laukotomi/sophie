@@ -32,6 +32,7 @@ dependencies:
   collection: ^1.19.1
   rrule: ^0.2.18
   flutter_system_ringtones: ^1.1.2
+  lottie: ^3.5.1
 
 dev_dependencies:
   flutter_test:

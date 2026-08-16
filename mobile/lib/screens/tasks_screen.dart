@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited, Timer;
+import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -19,6 +19,7 @@ import 'package:sophie/services/base_event.dart';
 import 'package:sophie/services/storage.dart';
 import 'package:sophie/services/task_events.dart';
 import 'package:sophie/utils/list_utils.dart';
+import 'package:sophie/widgets/sync_lottie_indicator.dart';
 import 'package:sophie/widgets/task_card.dart';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -36,12 +37,11 @@ class _TasksScreenState extends State<TasksScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late final EventSubscription<TaskEvent> _taskEventSub;
   late final AppEventSubscription _appEventSub;
-  Timer? _syncSuccessTimer;
 
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   int _pendingSyncs = 0;
-  bool _showSyncSuccess = false;
+  int _syncSuccessVersion = 0;
 
   @override
   void initState() {
@@ -70,7 +70,6 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   void dispose() {
-    _syncSuccessTimer?.cancel();
     _taskEventSub.cancel();
     _appEventSub.cancel();
     super.dispose();
@@ -80,13 +79,7 @@ class _TasksScreenState extends State<TasksScreen> {
     if (mounted) setState(fn);
   }
 
-  void _markSyncSuccess() {
-    _syncSuccessTimer?.cancel();
-    _safeSetState(() => _showSyncSuccess = true);
-    _syncSuccessTimer = Timer(const Duration(milliseconds: 1500), () {
-      _safeSetState(() => _showSyncSuccess = false);
-    });
-  }
+  void _markSyncSuccess() => _safeSetState(() => _syncSuccessVersion++);
 
   Future _syncTaskChanges() async {
     try {
@@ -266,20 +259,10 @@ class _TasksScreenState extends State<TasksScreen> {
             ? Text('Tasks  •  ${DateFormat('MMM d').format(_selectedDay!)}')
             : const Text('Sophie Tasks'),
         actions: [
-          if (_pendingSyncs > 0)
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          if (_pendingSyncs == 0 && _showSyncSuccess)
-            const Padding(
-              padding: EdgeInsets.all(8),
-              child: Icon(Icons.check_circle, color: Colors.green),
-            ),
+          SyncLottieIndicator(
+            pendingSyncs: _pendingSyncs,
+            successVersion: _syncSuccessVersion,
+          ),
           if (widget.usingCache)
             Tooltip(
               message: 'Showing cached data — could not reach server',
@@ -341,7 +324,7 @@ class _TasksScreenState extends State<TasksScreen> {
               )
             : ListView.builder(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(4),
                 itemCount: filteredTasks.length,
                 itemBuilder: (context, i) {
                   final task = filteredTasks[i];

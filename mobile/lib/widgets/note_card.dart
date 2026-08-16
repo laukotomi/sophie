@@ -5,6 +5,7 @@ import 'package:sophie/models/note.dart';
 import 'package:sophie/screens/add_note_screen.dart';
 import 'package:sophie/services/backend_note.dart';
 import 'package:sophie/widgets/collapsible_body.dart';
+import 'package:sophie/widgets/markdown_pager.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:sophie/widgets/file_download_chip.dart';
 import 'package:sophie/widgets/note_chip.dart';
@@ -35,6 +36,7 @@ class _NoteCardState extends State<NoteCard> {
   bool _overflows = false;
   final Set<String> _checkedItems = {};
 
+  static const double _minContentHeight = 60;
   static const double _maxCollapsedHeight = 300;
 
   @override
@@ -49,6 +51,12 @@ class _NoteCardState extends State<NoteCard> {
   @override
   void didUpdateWidget(covariant NoteCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.note.id != widget.note.id) {
+      if (_overlayController.isShowing) {
+        _overlayController.hide();
+      }
+    }
 
     if (oldWidget.scrollController != widget.scrollController) {
       oldWidget.scrollController.removeListener(_onScroll);
@@ -108,7 +116,7 @@ class _NoteCardState extends State<NoteCard> {
     // Float when the edit button itself (16px padding + ~40px compact button = 56px
     // from card top) has scrolled behind the AppBar, but the card is still visible.
     final shouldFloat =
-        cardTop < 14 && cardBottom > viewTop + kToolbarHeight + 75;
+        cardTop < 30 && cardBottom > viewTop + kToolbarHeight + 40;
 
     // debugPrint(
     //   '[NoteCard] cardTop=$cardTop cardBottom=$cardBottom '
@@ -124,7 +132,8 @@ class _NoteCardState extends State<NoteCard> {
           (topLeft.dx + size.width - horizontalInset - editButtonWidth).clamp(
             0.0,
             overlayBox.size.width - editButtonWidth,
-          );
+          ) +
+          5;
       _overlayController.show();
     } else if (!shouldFloat && _overlayController.isShowing) {
       _overlayController.hide();
@@ -176,7 +185,7 @@ class _NoteCardState extends State<NoteCard> {
       ),
     );
 
-    if (result == true) {
+    if (result == true && mounted) {
       setState(() => _checkedItems.clear());
     } else if (mounted) {
       setState(() {
@@ -258,9 +267,14 @@ class _NoteCardState extends State<NoteCard> {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  _buildNoteBody(),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minHeight: _minContentHeight,
+                    ),
+                    child: _buildNoteBody(),
+                  ),
                   if (canEdit)
-                    Positioned(top: 0, right: 0, child: _editButton(context)),
+                    Positioned(top: -8, right: -8, child: _editButton(context)),
                 ],
               ),
               const SizedBox(height: 8),
@@ -341,6 +355,44 @@ class _NoteCardState extends State<NoteCard> {
   }
 
   Widget _buildNoteBody() {
+    final lines = widget.note.text.split('\n');
+    final hasPinnedHeader =
+        lines.isNotEmpty && RegExp(r'^\s*#\s+\S').hasMatch(lines.first);
+    final pinnedHeader = hasPinnedHeader ? lines.first.trimRight() : null;
+    final bodyText = hasPinnedHeader
+        ? lines.skip(1).join('\n')
+        : widget.note.text;
+
+    final pages = bodyText
+        .split(RegExp(r'\n\s*---\s*\n'))
+        .where((p) => p.trim().isNotEmpty)
+        .toList()
+        .reversed
+        .toList();
+
+    if (!widget.note.todoList && pages.length > 1) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (pinnedHeader != null) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: _buildTextSegment(pinnedHeader),
+            ),
+            const SizedBox(height: 4),
+          ],
+          MarkdownPager(
+            pages: pages,
+            minContentHeight: _minContentHeight,
+            pageBuilder: (pageText) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: _buildTextSegment(pageText),
+            ),
+          ),
+        ],
+      );
+    }
+
     final content = widget.note.todoList
         ? _buildTodoListBody()
         : _buildTextSegment(widget.note.text);

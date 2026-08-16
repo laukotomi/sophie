@@ -17,6 +17,7 @@ import 'package:sophie/services/base_event.dart';
 import 'package:sophie/services/storage.dart';
 import 'package:sophie/utils/list_utils.dart';
 import 'package:sophie/widgets/note_card.dart';
+import 'package:sophie/widgets/sync_lottie_indicator.dart';
 
 class NotesScreen extends StatefulWidget {
   final List<Note> notes;
@@ -41,11 +42,10 @@ class _NotesScreenState extends State<NotesScreen> {
   final _scrollController = ScrollController();
   late final EventSubscription<NoteEvent> _noteEventSub;
   late final AppEventSubscription _appEventSub;
-  Timer? _syncSuccessTimer;
 
   String? _selectedTag;
   int _pendingSyncs = 0;
-  bool _showSyncSuccess = false;
+  int _syncSuccessVersion = 0;
 
   // Matches #tag (word chars directly after #, no space — distinguishes from markdown headings)
   final _tagRegex = RegExp(
@@ -86,7 +86,6 @@ class _NotesScreenState extends State<NotesScreen> {
 
   @override
   void dispose() {
-    _syncSuccessTimer?.cancel();
     _scrollController.dispose();
     _noteEventSub.cancel();
     _appEventSub.cancel();
@@ -94,11 +93,7 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   void _markSyncSuccess() {
-    _syncSuccessTimer?.cancel();
-    _safeSetState(() => _showSyncSuccess = true);
-    _syncSuccessTimer = Timer(const Duration(milliseconds: 1500), () {
-      _safeSetState(() => _showSyncSuccess = false);
-    });
+    _safeSetState(() => _syncSuccessVersion++);
   }
 
   Future _syncNoteChanges() async {
@@ -161,6 +156,7 @@ class _NotesScreenState extends State<NotesScreen> {
     try {
       await event.sync(widget.notes, _safeSetState);
       await Storage.noteEvents.removeEvent(event.eventId);
+      // await Future<void>.delayed(const Duration(seconds: 3));
       _markSyncSuccess();
     } catch (e) {
       await Storage.noteEvents.addOrUpdateEvent(event);
@@ -249,20 +245,10 @@ class _NotesScreenState extends State<NotesScreen> {
           ],
         ),
         actions: [
-          if (_pendingSyncs > 0)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          if (_pendingSyncs == 0 && _showSyncSuccess)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Icon(Icons.check_circle, color: Colors.green),
-            ),
+          SyncLottieIndicator(
+            pendingSyncs: _pendingSyncs,
+            successVersion: _syncSuccessVersion,
+          ),
           if (widget.usingCache)
             Tooltip(
               message: 'Showing cached data — could not reach server',
@@ -324,12 +310,13 @@ class _NotesScreenState extends State<NotesScreen> {
                 : ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     controller: _scrollController,
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(4),
                     itemCount: filtered.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final note = filtered[index];
                       return NoteCard(
+                        key: ValueKey(note.id),
                         note: note,
                         scrollController: _scrollController,
                         allowOverlay: widget.isActive,

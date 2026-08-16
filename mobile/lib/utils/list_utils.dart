@@ -22,8 +22,8 @@ class ListUtils {
     }
 
     for (final localItem in localList) {
-      final localIndex = backendList.indexWhere((n) => n.id == localItem.id);
-      if (localIndex == -1) {
+      final backendIndex = backendList.indexWhere((n) => n.id == localItem.id);
+      if (backendIndex == -1) {
         localList.removeWhere((n) => n.id == localItem.id);
         changed = true;
       }
