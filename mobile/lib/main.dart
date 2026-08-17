@@ -46,6 +46,7 @@ class MainApp extends StatefulWidget {
 
 class _MainAppState extends State<MainApp> {
   String? _token;
+  bool _offlineMode = false;
 
   @override
   void initState() {
@@ -60,15 +61,18 @@ class _MainAppState extends State<MainApp> {
     }
   }
 
-  void _onLoggedIn(String token, String serverUrl) {
-    final client = BackendClient(baseUrl: serverUrl, token: token);
-    getIt.registerSingleton(client);
-    getIt.registerSingleton(client.note);
-    getIt.registerSingleton(client.task);
-    getIt.registerSingleton(client.noteFile);
+  Future _onLoggedIn(String token, String serverUrl) async {
+    if (token.isNotEmpty) {
+      final client = BackendClient(baseUrl: serverUrl, token: token);
+      getIt.registerSingleton(client);
+      getIt.registerSingleton(client.note);
+      getIt.registerSingleton(client.task);
+      getIt.registerSingleton(client.noteFile);
+    }
 
     setState(() {
       _token = token;
+      _offlineMode = token.isEmpty;
     });
   }
 
@@ -112,7 +116,7 @@ class _MainAppState extends State<MainApp> {
       },
       home: _token == null
           ? LoginScreen(onLoggedIn: _onLoggedIn)
-          : HomeScreen(onLoggedOut: _onLoggedOut),
+          : HomeScreen(onLoggedOut: _onLoggedOut, offlineMode: _offlineMode),
     );
   }
 }

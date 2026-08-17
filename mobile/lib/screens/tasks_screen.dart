@@ -25,9 +25,15 @@ import 'package:table_calendar/table_calendar.dart';
 
 class TasksScreen extends StatefulWidget {
   final List<Task> tasks;
+  final bool offlineMode;
   final bool usingCache;
 
-  const TasksScreen({super.key, required this.tasks, required this.usingCache});
+  const TasksScreen({
+    super.key,
+    required this.tasks,
+    required this.offlineMode,
+    required this.usingCache,
+  });
 
   @override
   State<TasksScreen> createState() => _TasksScreenState();
@@ -131,7 +137,9 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future _syncEventInBackground(TaskEvent event) async {
     try {
-      await event.sync(widget.tasks, _safeSetState);
+      if (!widget.offlineMode) {
+        await event.sync(widget.tasks, _safeSetState);
+      }
       await Storage.taskEvents.removeEvent(event.eventId);
       _markSyncSuccess();
     } catch (e) {

@@ -36,7 +36,12 @@ class _TestNoteEvent extends NoteEvent {
 
 Widget _buildScreen() {
   return MaterialApp(
-    home: NotesScreen(notes: [], usingCache: false, isActive: true),
+    home: NotesScreen(
+      notes: [],
+      offlineMode: false,
+      usingCache: false,
+      isActive: true,
+    ),
   );
 }
 
@@ -86,7 +91,10 @@ void main() {
 
     expect(find.byIcon(Icons.check_circle), findsNothing);
     expect(find.textContaining('Error syncing note changes:'), findsOneWidget);
-    expect((await SharedPreferences.getInstance()).getString('offline_note_events'), isNotNull);
+    expect(
+      (await SharedPreferences.getInstance()).getString('offline_note_events'),
+      isNotNull,
+    );
   });
 
   testWidgets('same event object syncs only once even if emitted twice', (

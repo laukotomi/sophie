@@ -21,12 +21,14 @@ import 'package:sophie/widgets/sync_lottie_indicator.dart';
 
 class NotesScreen extends StatefulWidget {
   final List<Note> notes;
+  final bool offlineMode;
   final bool usingCache;
   final bool isActive;
 
   const NotesScreen({
     super.key,
     required this.notes,
+    required this.offlineMode,
     required this.usingCache,
     required this.isActive,
   });
@@ -154,7 +156,9 @@ class _NotesScreenState extends State<NotesScreen> {
 
   Future _syncEventInBackground(NoteEvent event) async {
     try {
-      await event.sync(widget.notes, _safeSetState);
+      if (!widget.offlineMode) {
+        await event.sync(widget.notes, _safeSetState);
+      }
       await Storage.noteEvents.removeEvent(event.eventId);
       // await Future<void>.delayed(const Duration(seconds: 3));
       _markSyncSuccess();

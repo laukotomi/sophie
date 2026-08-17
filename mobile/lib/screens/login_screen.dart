@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:sophie/models/app_user.dart';
+import 'package:sophie/models/dashboard_data.dart';
 import 'package:sophie/services/backend.dart';
 import 'package:sophie/services/storage.dart';
 
 class LoginScreen extends StatefulWidget {
-  final void Function(String token, String serverUrl) onLoggedIn;
+  final Future Function(String token, String serverUrl) onLoggedIn;
 
   const LoginScreen({super.key, required this.onLoggedIn});
 
@@ -55,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await Storage.setAuthToken(token);
       await Storage.setServerUrl(serverUrl);
 
-      widget.onLoggedIn(token, serverUrl);
+      await widget.onLoggedIn(token, serverUrl);
     } on UnauthorizedException {
       setState(() => _errorMessage = 'Invalid email or password.');
     } catch (_) {
@@ -63,6 +65,49 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       setState(() => _loading = false);
     }
+  }
+
+  Future _enterOfflineMode() async {
+    if (!mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Offline mode'),
+        content: const Text(
+          "Your data won't be synced in offline mode and may be lost if you log out or your phone is damaged or reset.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Continue offline'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    await Storage.setAuthToken('');
+
+    await Storage.saveDashboardData(
+      DashboardData(
+        tasks: [],
+        notes: [],
+        user: AppUser(
+          id: 'anonymous',
+          name: 'Offline user',
+          email: 'offline@example.com',
+        ),
+        users: [],
+      ),
+    );
+
+    await widget.onLoggedIn('', '');
   }
 
   @override
@@ -169,6 +214,31 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Text('Sign in'),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          'or',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      const Expanded(child: Divider()),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  OutlinedButton(
+                    onPressed: _loading ? null : _enterOfflineMode,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.secondary,
+                      side: BorderSide(
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                    ),
+                    child: const Text('Offline mode'),
                   ),
                 ],
               ),

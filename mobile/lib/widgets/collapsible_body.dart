@@ -4,14 +4,54 @@ import 'package:flutter/scheduler.dart';
 
 /// Clips [child] to [maxHeight] when [collapsed], and calls [onOverflowDetected]
 /// post-frame whenever the child's natural height exceeds [maxHeight].
-class CollapsibleBody extends SingleChildRenderObjectWidget {
+class CollapsibleBody extends StatefulWidget {
   const CollapsibleBody({
     super.key,
     required this.maxHeight,
     required this.collapsed,
     required this.onOverflowDetected,
-    required Widget child,
-  }) : super(child: child);
+    required this.child,
+    this.duration = const Duration(milliseconds: 220),
+    this.curve = Curves.easeOut,
+  });
+
+  final double maxHeight;
+  final bool collapsed;
+  final void Function(bool overflows) onOverflowDetected;
+  final Widget child;
+  final Duration duration;
+  final Curve curve;
+
+  @override
+  State<CollapsibleBody> createState() => _CollapsibleBodyState();
+}
+
+class _CollapsibleBodyState extends State<CollapsibleBody>
+    with TickerProviderStateMixin {
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSize(
+      duration: widget.duration,
+      curve: widget.curve,
+      alignment: Alignment.topCenter,
+      clipBehavior: Clip.hardEdge,
+      child: _CollapsibleBodyRenderWidget(
+        maxHeight: widget.maxHeight,
+        collapsed: widget.collapsed,
+        onOverflowDetected: widget.onOverflowDetected,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _CollapsibleBodyRenderWidget extends SingleChildRenderObjectWidget {
+  const _CollapsibleBodyRenderWidget({
+    required this.maxHeight,
+    required this.collapsed,
+    required this.onOverflowDetected,
+    required super.child,
+  });
 
   final double maxHeight;
   final bool collapsed;

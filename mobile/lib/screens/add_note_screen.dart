@@ -198,7 +198,9 @@ class _AddNoteScreenState extends State<AddNoteScreen>
   void _startLockHeartbeat() {
     _lockHeartbeat = Timer.periodic(const Duration(seconds: 20), (_) async {
       try {
-        await getIt<BackendNote>().refreshNoteLock(widget.existingNote!.id);
+        if (getIt.isRegistered(type: BackendNote)) {
+          await getIt<BackendNote>().refreshNoteLock(widget.existingNote!.id);
+        }
         if (mounted && _lockError) setState(() => _lockError = false);
       } catch (_) {
         if (mounted && !_lockError) setState(() => _lockError = true);
@@ -220,11 +222,13 @@ class _AddNoteScreenState extends State<AddNoteScreen>
 
   Future _openHistory() async {
     setState(() => _loadingHistory = true);
-    List<NoteHistoryEntry> history;
+    List<NoteHistoryEntry> history = [];
     try {
-      history = await getIt<BackendNote>().getNoteHistory(
-        widget.existingNote!.id,
-      );
+      if (getIt.isRegistered(type: BackendNote)) {
+        history = await getIt<BackendNote>().getNoteHistory(
+          widget.existingNote!.id,
+        );
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _loadingHistory = false);
@@ -285,7 +289,9 @@ class _AddNoteScreenState extends State<AddNoteScreen>
     if (!_isEditing || widget.offlineMode) return;
     setState(() => _releasingLock = true);
     try {
-      await getIt<BackendNote>().releaseNoteLock(widget.existingNote!.id);
+      if (getIt.isRegistered(type: BackendNote)) {
+        await getIt<BackendNote>().releaseNoteLock(widget.existingNote!.id);
+      }
     } catch (_) {
       // Ignore — lock will expire on its own.
     } finally {

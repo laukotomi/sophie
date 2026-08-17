@@ -25,8 +25,13 @@ import 'package:sophie/services/user_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback onLoggedOut;
+  final bool offlineMode;
 
-  const HomeScreen({super.key, required this.onLoggedOut});
+  const HomeScreen({
+    super.key,
+    required this.onLoggedOut,
+    required this.offlineMode,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -74,6 +79,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Future didChangeAppLifecycleState(AppLifecycleState state) async {
     if (state == AppLifecycleState.resumed) {
+      if (widget.offlineMode) return;
+
       if (!_usingCache &&
           (_lastCheckForChanges == null ||
               DateTime.now().difference(_lastCheckForChanges!) >
@@ -123,7 +130,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _dataFuture = () async {
             final data = await _loadData();
             if (!_usingCache && !kIsWeb) {
-              // This might not be necessary anymore
               await AlertNotifications.refreshNotifications(data.tasks);
             }
             return data;
@@ -136,11 +142,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<DashboardData> _loadData() async {
     DashboardData? data;
     try {
-      await AppEventBus.instance.emit(NoteSyncEvent());
-      await AppEventBus.instance.emit(TaskSyncEvent());
+      if (!widget.offlineMode) {
+        await AppEventBus.instance.emit(NoteSyncEvent());
+        await AppEventBus.instance.emit(TaskSyncEvent());
 
-      data = await getIt<BackendClient>().getDashboardData();
-      await Storage.saveDashboardData(data);
+        data = await getIt<BackendClient>().getDashboardData();
+        await Storage.saveDashboardData(data);
+      } else {
+        data = Storage.getDashboardData()!;
+      }
 
       if (mounted) setState(() => _usingCache = false);
       _currentData = data;
@@ -224,11 +234,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               NotesScreen(
                 notes: data.notes,
+                offlineMode: widget.offlineMode,
                 usingCache: _usingCache,
                 isActive: _selectedIndex == 0,
               ),
-              TasksScreen(tasks: data.tasks, usingCache: _usingCache),
-              SettingsScreen(tasks: data.tasks),
+              TasksScreen(
+                tasks: data.tasks,
+                offlineMode: widget.offlineMode,
+                usingCache: _usingCache,
+              ),
+              SettingsScreen(
+                tasks: data.tasks,
+                offlineMode: widget.offlineMode,
+              ),
             ],
           ),
           bottomNavigationBar: NavigationBar(

@@ -100,7 +100,7 @@ class NoteSavedEvent extends NoteEvent {
     }).toList();
 
     final newFiles = this.newFiles
-        .map((f) => NoteFile(id: f.id, fileName: f.name))
+        .map((f) => NoteFile(id: f.id, fileName: f.name, path: f.path))
         .toList();
 
     if (!isNew) {

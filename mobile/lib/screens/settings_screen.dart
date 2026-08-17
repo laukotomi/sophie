@@ -1,17 +1,30 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:alarm/alarm.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:sophie/dialogs/ringtone_picker_dialog.dart';
 import 'package:sophie/events/app_logout_event.dart';
+import 'package:sophie/events/app_sync_event.dart';
+import 'package:sophie/models/dashboard_data.dart';
 import 'package:sophie/models/settings.dart';
 import 'package:sophie/models/task.dart';
 import 'package:sophie/services/alert_notifications.dart';
 import 'package:sophie/services/app_events.dart';
 import 'package:sophie/services/storage.dart';
+import 'package:sophie/utils/browser_download_stub.dart'
+    if (dart.library.html) 'package:sophie/utils/browser_download_web.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.tasks});
+  const SettingsScreen({
+    super.key,
+    required this.tasks,
+    required this.offlineMode,
+  });
 
   final List<Task> tasks;
+  final bool offlineMode;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -22,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late AlarmSound _alarmSound;
   bool _saving = false;
   bool _testingAlarm = false;
+  bool _offlineTransferInProgress = false;
 
   @override
   void initState() {
@@ -126,6 +140,103 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _exportDashboardData() async {
+    if (_offlineTransferInProgress) return;
+
+    final data = Storage.getDashboardData();
+    if (data == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No data found to export.')));
+      return;
+    }
+
+    setState(() => _offlineTransferInProgress = true);
+    try {
+      final payload = jsonEncode(data.toJson());
+      final bytes = Uint8List.fromList(utf8.encode(payload));
+      final filename =
+          'sophie-data-${DateTime.now().toIso8601String().replaceAll(':', '-')}.json';
+
+      final savedPath = await FilePicker.saveFile(
+        dialogTitle: 'Export Sophie data',
+        fileName: filename,
+        bytes: bytes,
+      );
+
+      if (!mounted) return;
+      if (savedPath != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Exported Sophie data to $savedPath')),
+        );
+      } else {
+        // Some platforms may not support direct save dialogs with bytes.
+        // Fallback to browser-style download prompt if available.
+        saveBytesToBrowserDownload(
+          bytes: bytes,
+          filename: filename,
+          mimeType: 'application/json',
+        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Export started.')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _offlineTransferInProgress = false);
+      }
+    }
+  }
+
+  Future<void> _importDashboardData() async {
+    if (_offlineTransferInProgress) return;
+
+    setState(() => _offlineTransferInProgress = true);
+    try {
+      final picked = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        withData: true,
+      );
+
+      if (!mounted || picked == null || picked.files.isEmpty) {
+        return;
+      }
+
+      final file = picked.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        throw StateError('Selected file bytes are unavailable.');
+      }
+
+      final decoded = utf8.decode(bytes);
+      final parsed = jsonDecode(decoded) as Map<String, dynamic>;
+      final dashboardData = DashboardData.fromJson(parsed);
+
+      await Storage.saveDashboardData(dashboardData);
+      await AppEventBus.instance.emit(AppSyncEvent());
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported Sophie data from ${file.name}.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _offlineTransferInProgress = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -172,6 +283,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: _saving ? null : _save,
             child: Text(_saving ? 'Saving...' : 'Save'),
           ),
+          const SizedBox(height: 24),
+          if (widget.offlineMode) ...[
+            Text(
+              'Offline mode',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _offlineTransferInProgress
+                            ? null
+                            : _exportDashboardData,
+                        icon: const Icon(Icons.upload_file),
+                        label: const Text('Export'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _offlineTransferInProgress
+                            ? null
+                            : _importDashboardData,
+                        icon: const Icon(Icons.download),
+                        label: const Text('Import'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           Text('Account', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),

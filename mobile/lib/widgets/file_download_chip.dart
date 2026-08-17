@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +25,31 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
 
   bool get _usesLocalFileSystemDownload =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  ({List<int> bytes, String? contentType}) _decodeDataUrl(String dataUrl) {
+    final match = RegExp(
+      r'^data:([^,]*?),(.*)$',
+      dotAll: true,
+    ).firstMatch(dataUrl);
+    if (match == null) {
+      throw FormatException('Invalid data URL');
+    }
+
+    final metadata = match.group(1) ?? '';
+    final payload = match.group(2) ?? '';
+    final parts = metadata.split(';').where((part) => part.isNotEmpty).toList();
+
+    final isBase64 = parts.contains('base64');
+    final contentType = parts.isNotEmpty && parts.first != 'base64'
+        ? parts.first
+        : 'application/octet-stream';
+
+    final bytes = isBase64
+        ? base64.decode(payload)
+        : utf8.encode(Uri.decodeComponent(payload));
+
+    return (bytes: bytes, contentType: contentType);
+  }
 
   Future<bool> _ensureStoragePermission() async {
     // On Android 11+ (API 30+), WRITE_EXTERNAL_STORAGE is revoked for the
@@ -82,14 +110,39 @@ class _FileDownloadChipState extends State<FileDownloadChip> {
     try {
       if (_usesLocalFileSystemDownload) {
         final path = '/storage/emulated/0/Download/${widget.file.fileName}';
-        await getIt<BackendNoteFile>().downloadFileTo(widget.file.id, path);
+
+        if (getIt.isRegistered(type: BackendNoteFile)) {
+          await getIt<BackendNoteFile>().downloadFileTo(widget.file.id, path);
+        } else {
+          final sink = File(path).openWrite();
+          try {
+            await File(widget.file.path!).openRead().pipe(sink);
+          } finally {
+            await sink.close();
+          }
+        }
+
         // Notify MediaStore so the file appears in file explorers immediately.
         await const MethodChannel(
           'sophie/media_scanner',
         ).invokeMethod('scanFile', {'path': path});
       } else {
-        final (bytes, contentType) = await getIt<BackendNoteFile>()
-            .downloadFileBytes(widget.file.id);
+        List<int> bytes;
+        String? contentType;
+
+        if (getIt.isRegistered(type: BackendNoteFile)) {
+          (bytes, contentType) = await getIt<BackendNoteFile>()
+              .downloadFileBytes(widget.file.id);
+        } else {
+          final dataUrl = widget.file.path;
+          if (dataUrl == null || !dataUrl.startsWith('data:')) {
+            throw StateError('Offline web downloads require a data URL');
+          }
+
+          final decoded = _decodeDataUrl(dataUrl);
+          bytes = decoded.bytes;
+          contentType = decoded.contentType;
+        }
 
         saveBytesToBrowserDownload(
           bytes: bytes,

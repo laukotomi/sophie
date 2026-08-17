@@ -144,11 +144,15 @@ class _NoteCardState extends State<NoteCard> {
     if (_acquiringLock) return;
     setState(() => _acquiringLock = true);
 
-    String latestText;
+    String latestText = widget.note.text;
     bool offlineMode = false;
     try {
-      final result = await getIt<BackendNote>().acquireNoteLock(widget.note.id);
-      latestText = result.text;
+      if (getIt.isRegistered(type: BackendNote)) {
+        final result = await getIt<BackendNote>().acquireNoteLock(
+          widget.note.id,
+        );
+        latestText = result.text;
+      }
     } on NoteLockedException {
       if (!ctx.mounted) return;
       setState(() => _acquiringLock = false);
@@ -164,7 +168,6 @@ class _NoteCardState extends State<NoteCard> {
     } catch (_) {
       // Network error: open in offline mode so the user can still edit.
       offlineMode = true;
-      latestText = widget.note.text;
     }
 
     if (!ctx.mounted) return;

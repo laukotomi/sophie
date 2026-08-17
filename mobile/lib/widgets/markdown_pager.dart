@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class MarkdownPager extends StatefulWidget {
@@ -23,16 +24,22 @@ class _MarkdownPagerState extends State<MarkdownPager> {
   final Map<int, double> _pageHeights = {};
 
   int _currentPageIndex = 0;
-  double _currentPageHeight = 180;
+  late double _currentPageHeight;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPageHeight = widget.minContentHeight;
+  }
 
   @override
   void didUpdateWidget(covariant MarkdownPager oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.pages != widget.pages) {
+    if (!listEquals(oldWidget.pages, widget.pages)) {
       _pageHeights.clear();
       _currentPageIndex = 0;
-      _currentPageHeight = 180;
+      _currentPageHeight = widget.minContentHeight;
       if (_pageController.hasClients) {
         _pageController.jumpToPage(0);
       }
@@ -61,74 +68,89 @@ class _MarkdownPagerState extends State<MarkdownPager> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedSize(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          child: SizedBox(
-            height: _currentPageHeight,
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: widget.pages.length,
-              onPageChanged: (index) {
-                final measured = _pageHeights[index];
-                final nextHeight = measured == null
-                    ? _currentPageHeight
-                    : math.max(widget.minContentHeight, measured);
-
-                if ((_currentPageHeight - nextHeight).abs() >= 0.5 ||
-                    _currentPageIndex != index) {
-                  setState(() {
-                    _currentPageIndex = index;
-                    _currentPageHeight = nextHeight;
-                  });
-                }
-              },
-              itemBuilder: (context, index) {
-                return _MeasuredSize(
-                  onSize: (size) => _updateMeasuredPageHeight(index, size),
-                  child: widget.pageBuilder(widget.pages[index]),
-                );
-              },
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Pre-measure page heights outside of PageView constraints so the
+          // first visible page gets its correct height immediately.
+          Offstage(
+            offstage: true,
+            child: SizedBox(
+              width: constraints.maxWidth,
+              child: Column(
+                children: List.generate(widget.pages.length, (index) {
+                  return _MeasuredSize(
+                    onSize: (size) => _updateMeasuredPageHeight(index, size),
+                    child: widget.pageBuilder(widget.pages[index]),
+                  );
+                }),
+              ),
             ),
           ),
-        ),
-        if (widget.pages.length > 1) ...[
-          const SizedBox(height: 8),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            children: List.generate(widget.pages.length, (index) {
-              final isActive = index == _currentPageIndex;
-              return InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () {
-                  _pageController.animateToPage(
-                    index,
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOut,
-                  );
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            child: SizedBox(
+              height: _currentPageHeight,
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: widget.pages.length,
+                onPageChanged: (index) {
+                  final measured = _pageHeights[index];
+                  final nextHeight = measured == null
+                      ? _currentPageHeight
+                      : math.max(widget.minContentHeight, measured);
+
+                  if ((_currentPageHeight - nextHeight).abs() >= 0.5 ||
+                      _currentPageIndex != index) {
+                    setState(() {
+                      _currentPageIndex = index;
+                      _currentPageHeight = nextHeight;
+                    });
+                  }
                 },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  width: isActive ? 18 : 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: isActive
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(
-                            context,
-                          ).colorScheme.onSurfaceVariant.withAlpha(110),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              );
-            }),
+                itemBuilder: (context, index) {
+                  return widget.pageBuilder(widget.pages[index]);
+                },
+              ),
+            ),
           ),
+          if (widget.pages.length > 1) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              children: List.generate(widget.pages.length, (index) {
+                final isActive = index == _currentPageIndex;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    _pageController.animateToPage(
+                      index,
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOut,
+                    );
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    width: isActive ? 18 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant.withAlpha(110),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -156,11 +178,6 @@ class _MeasuredSizeState extends State<_MeasuredSize> {
       widget.onSize(size);
     });
 
-    return OverflowBox(
-      minHeight: 0,
-      maxHeight: double.infinity,
-      alignment: Alignment.topLeft,
-      child: SizedBox(key: _contentKey, child: widget.child),
-    );
+    return SizedBox(key: _contentKey, child: widget.child);
   }
 }
