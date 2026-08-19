@@ -16,7 +16,7 @@ class Note extends BaseEntity {
   bool hasConflict = false;
 
   Note({
-    required this.text,
+    required String text,
     this.color,
     this.dontFold = false,
     this.todoList = false,
@@ -29,7 +29,7 @@ class Note extends BaseEntity {
     required super.id,
     required super.createdAt,
     required super.updatedAt,
-  });
+  }) : text = text.trim().replaceAll('\r\n', '\n');
 
   factory Note.fromJson(Map<String, dynamic> json) {
     final baseFields = BaseEntity.parseBaseFields(json);

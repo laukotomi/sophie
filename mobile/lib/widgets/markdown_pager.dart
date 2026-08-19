@@ -1,6 +1,4 @@
 import 'dart:math' as math;
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class MarkdownPager extends StatefulWidget {
@@ -30,20 +28,6 @@ class _MarkdownPagerState extends State<MarkdownPager> {
   void initState() {
     super.initState();
     _currentPageHeight = widget.minContentHeight;
-  }
-
-  @override
-  void didUpdateWidget(covariant MarkdownPager oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (!listEquals(oldWidget.pages, widget.pages)) {
-      _pageHeights.clear();
-      _currentPageIndex = 0;
-      _currentPageHeight = widget.minContentHeight;
-      if (_pageController.hasClients) {
-        _pageController.jumpToPage(0);
-      }
-    }
   }
 
   @override
@@ -111,13 +95,17 @@ class _MarkdownPagerState extends State<MarkdownPager> {
                   }
                 },
                 itemBuilder: (context, index) {
-                  return widget.pageBuilder(widget.pages[index]);
+                  return OverflowBox(
+                    alignment: Alignment.topCenter,
+                    maxHeight: double.infinity,
+                    child: widget.pageBuilder(widget.pages[index]),
+                  );
                 },
               ),
             ),
           ),
           if (widget.pages.length > 1) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 8,
@@ -149,6 +137,7 @@ class _MarkdownPagerState extends State<MarkdownPager> {
               }),
             ),
           ],
+          const SizedBox(height: 8),
         ],
       ),
     );

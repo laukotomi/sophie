@@ -348,8 +348,8 @@ class _NoteCardState extends State<NoteCard> {
     return MarkdownStyleSheet.fromTheme(theme).copyWith(
       h1: theme.textTheme.headlineSmall?.copyWith(fontSize: 26),
       h2: theme.textTheme.titleLarge?.copyWith(fontSize: 20),
-      h1Padding: const EdgeInsets.only(top: 0, bottom: 8),
-      h2Padding: const EdgeInsets.only(top: 16, bottom: 8),
+      h1Padding: const EdgeInsets.only(top: 0, bottom: 4),
+      h2Padding: const EdgeInsets.only(top: 8, bottom: 8),
       h3Padding: const EdgeInsets.only(top: 8, bottom: 8),
       h4Padding: const EdgeInsets.only(top: 8, bottom: 8),
       h5Padding: const EdgeInsets.only(top: 8, bottom: 8),
@@ -358,52 +358,53 @@ class _NoteCardState extends State<NoteCard> {
   }
 
   Widget _buildNoteBody() {
-    final lines = widget.note.text.split('\n');
-    final hasPinnedHeader =
-        lines.isNotEmpty && RegExp(r'^\s*#\s+\S').hasMatch(lines.first);
-    final pinnedHeader = hasPinnedHeader ? lines.first.trimRight() : null;
-    final bodyText = hasPinnedHeader
-        ? lines.skip(1).join('\n')
-        : widget.note.text;
-
-    final pages = bodyText
+    final pages = widget.note.text
         .split(RegExp(r'\n\s*---\s*\n'))
-        .where((p) => p.trim().isNotEmpty)
-        .toList()
         .reversed
+        .where((p) => p.trim().isNotEmpty)
         .toList();
 
-    if (!widget.note.todoList && pages.length > 1) {
+    if (pages.length > 1) {
+      final lines = pages.last.split('\n');
+      final hasPinnedHeader =
+          lines.isNotEmpty && RegExp(r'^\s*#\s+\S').hasMatch(lines.first);
+      final pinnedHeader = hasPinnedHeader ? lines.first.trimRight() : null;
+      if (hasPinnedHeader) {
+        pages[pages.length - 1] = lines.skip(1).join('\n');
+      }
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (pinnedHeader != null) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _buildTextSegment(pinnedHeader),
-            ),
-            const SizedBox(height: 4),
-          ],
+          if (pinnedHeader != null) _buildTextSegment(pinnedHeader),
           MarkdownPager(
+            key: ValueKey(widget.note.text),
             pages: pages,
             minContentHeight: _minContentHeight,
-            pageBuilder: (pageText) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _buildTextSegment(pageText),
-            ),
+            pageBuilder: (pageText) {
+              return _buildNoteContent(pageText);
+            },
           ),
         ],
       );
     }
 
+    return _buildNoteContent(widget.note.text);
+  }
+
+  Widget _buildNoteContent(String text) {
     final content = widget.note.todoList
-        ? _buildTodoListBody()
-        : _buildTextSegment(widget.note.text);
+        ? _buildTodoListBody(text)
+        : _buildTextSegment(text);
 
     if (widget.note.dontFold) {
       return content;
     }
 
+    return _buildCollapsibleBody(content);
+  }
+
+  Widget _buildCollapsibleBody(Widget content) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -478,9 +479,9 @@ class _NoteCardState extends State<NoteCard> {
     return filtered.join('\n');
   }
 
-  Widget _buildTodoListBody() {
+  Widget _buildTodoListBody(String text) {
     final theme = Theme.of(context);
-    final segments = _parseTodoList(widget.note.text);
+    final segments = _parseTodoList(text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: segments.map((segment) {
@@ -528,7 +529,7 @@ class _NoteCardState extends State<NoteCard> {
             ),
           );
         } else if (segment is _SpacerSegment) {
-          return const SizedBox(height: 16);
+          return const SizedBox(height: 12);
         } else {
           final textSeg = segment as _TextSegment;
           return _buildTextSegment(textSeg.text);
@@ -589,11 +590,17 @@ class _NoteCardState extends State<NoteCard> {
 
     void flushBuffer() {
       if (buffer.isEmpty) return;
-      final buffered = buffer.toString().trimRight();
+      final rawBuffer = buffer.toString();
+      final buffered = rawBuffer.trimRight();
       if (buffered.isNotEmpty) {
         segments.add(_TextSegment(buffered));
+        final trailingLineBreaks =
+            RegExp(r'\n+$').firstMatch(rawBuffer)?.group(0)?.length ?? 0;
+        for (var index = 1; index < trailingLineBreaks; index++) {
+          segments.add(_SpacerSegment());
+        }
       } else {
-        final lineCount = buffer.toString().split('\n').length - 1;
+        final lineCount = rawBuffer.split('\n').length - 1;
         for (var i = 0; i < lineCount; i++) {
           segments.add(_SpacerSegment());
         }
